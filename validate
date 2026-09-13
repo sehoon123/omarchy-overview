@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Headless checks only. No compositor actions or changes to desktop settings.
+set -euo pipefail
+cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
+for file in ./*.qml; do /usr/lib/qt6/bin/qmlformat "$file" >/dev/null; done
+node Layout.test.js
+node OverviewLogic.test.js
+python3 -m unittest discover -s tests -p 'test_*.py' -v
+QT_QPA_PLATFORM=offscreen QT_IM_MODULE=compose QT_QUICK_BACKEND=software \
+  /usr/lib/qt6/bin/qmltestrunner -input tests -o -,txt

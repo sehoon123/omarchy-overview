@@ -1,0 +1,65 @@
+import QtQuick
+import "Layout.js" as OverviewLayout
+
+Item {
+  id: root
+  property int desktopId: 1
+  property var members: []
+  property var captureFor: address => null
+  property string wallpaper: ""
+  property bool live: true
+  property bool highlighted: false
+  property bool hovered: false
+  property bool dropTarget: false
+  property bool canRemove: false
+  property color accent: "#76b5ff"
+  width: 148; height: 108
+  readonly property var miniLayout: OverviewLayout.arrange(members.map(w => {
+    const size = w.lastIpcObject.size
+    return size && size[1] > 0 ? size[0] / size[1] : 1.6
+  }), 132, 68, true)
+  property alias removeButton: removeCircle
+
+  Rectangle {
+    x: -3; y: -3; width: 154; height: 90; radius: 5
+    color: "transparent"; border.width: root.dropTarget ? 3 : 2
+    border.color: root.dropTarget ? "#91e2b1" : root.highlighted ? root.accent : root.hovered ? "#88ffffff" : "transparent"
+  }
+  Image {
+    width: 148; height: 84; source: root.wallpaper
+    sourceSize: Qt.size(296, 168); fillMode: Image.PreserveAspectCrop
+    Rectangle { anchors.fill: parent; color: "#300b0e17" }
+  }
+  Repeater {
+    model: root.members
+    delegate: Rectangle {
+      required property var modelData
+      required property int index
+      readonly property var rect: root.miniLayout[index] || ({ x: 0, y: 0, width: 0, height: 0 })
+      x: 8 + rect.x; y: 8 + rect.y; width: rect.width; height: rect.height
+      color: "#cb282c37"
+      ShaderEffectSource {
+        anchors.fill: parent
+        readonly property var sharedCapture: root.captureFor(parent.modelData.address)
+        sourceItem: sharedCapture ? sharedCapture.image : null
+        hideSource: true
+        live: root.live && !!sharedCapture && sharedCapture.hasContent
+        smooth: true
+        visible: !!sharedCapture && sharedCapture.hasContent
+      }
+    }
+  }
+  Text {
+    y: 93; anchors.horizontalCenter: parent.horizontalCenter
+    text: "Desktop " + root.desktopId
+    color: "#f0f1f5"; font.pixelSize: 12
+    style: Text.Outline; styleColor: "#66000000"
+  }
+  Rectangle {
+    id: removeCircle
+    x: -10; y: -10; width: 22; height: 22; radius: 11
+    color: "#e9eef5"
+    visible: root.canRemove && root.hovered && !root.dropTarget
+    Text { anchors.centerIn: parent; text: "×"; color: "#242a35"; font.pixelSize: 18 }
+  }
+}

@@ -1,0 +1,23 @@
+# Local preferences, environment and runtime state
+/settings.json
+/settings.test-tmp
+/test-state/
+/.env
+/.env.*
+/.venv/
+
+# Generated Python/Qt data
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.qmlc
+*.jsc
+*.log
+*.qslog
+
+# Local screenshots and backups, not project assets
+/overview.png
+/quick-look.png
+/settings.png
+*.bak
+*.bak.*

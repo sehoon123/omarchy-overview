@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# Toggle the resident, user-owned overview; cached frames stay in memory only.
+set -euo pipefail
+config="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/overview"
+ipc() { timeout 1 quickshell ipc -p "$config" call overview "$@"; }
+
+# The service's graceful stop must wait for any covered scroll to be restored.
+if [[ "${1:-}" == --shutdown ]]; then
+  ipc shutdown >/dev/null 2>&1 || exit 0
+  deadline=$((SECONDS + 6))
+  while ((SECONDS < deadline)); do
+    ipc status >/dev/null 2>&1 || exit 0
+    sleep .03
+  done
+  echo 'Overview did not stop within six seconds' >&2
+  exit 1
+fi
+
+# Never summon previews into a locked session.
+omarchy-hyprland-session-locked && exit 0
+mode=""
+case "${1:-}" in
+  --next|--previous)
+    direction="${1#--}"
+    if [[ "$(ipc navigateDesktop "$direction" 2>/dev/null || true)" != ok ]]; then
+      exec python3 "$config/controller.py" step "$direction"
+    fi
+    exit 0 ;;
+  --app) mode=app ;;
+  "") ;;
+  *) echo 'Usage: omarchy-overview [--app|--next|--previous|--shutdown]' >&2; exit 2 ;;
+esac
+
+exec 9>"${XDG_RUNTIME_DIR:?}/sehun-overview.lock"
+flock -n 9 || exit 0
+# Warm path: one IPC request, no process restart or hyprctl/jq context probes.
+if ipc toggle "$mode" >/dev/null 2>&1; then exit 0; fi
+
+if ! systemctl --user start sehun-overview.service; then
+  env OVERVIEW_START_HIDDEN=1 quickshell -p "$config" --no-duplicate --daemonize 9>&-
+fi
+for ((i = 0; i < 60; i++)); do
+  if ipc toggle "$mode" >/dev/null 2>&1; then exit 0; fi
+  sleep .025
+done
+echo 'Unable to open Overview' >&2
+exit 1

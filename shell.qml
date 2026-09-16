@@ -48,7 +48,7 @@ ShellRoot {
   readonly property bool preparing: previews.busy
   // Eager subscriptions make opening independent of CLI context probes.
   readonly property var observedMonitors: Hyprland.monitors.values
-  readonly property var focusedWindow: Hyprland.activeToplevel
+  readonly property var focusedWindow: Logic.focusedWindow(Hyprland.activeToplevel, Hyprland.toplevels.values)
   onFocusedWindowChanged: if (openCount > 0) focusedChanged()
   readonly property color accent: preferences.values.followTheme ? themeColors.accent : "#76b5ff"
   readonly property color surfaceColor: preferences.values.followTheme ? themeColors.background : "#202633"
@@ -85,7 +85,7 @@ ShellRoot {
     const initialDesktop = Quickshell.env("OVERVIEW_INITIAL_WORKSPACE") || ""
     filterWorkspace = initialDesktop.startsWith("name:") ? initialDesktop : Number(initialDesktop) > 0 ? Number(initialDesktop) : Logic.workspaceKey(Hyprland.focusedWorkspace) || 1
     if (Quickshell.env("OVERVIEW_APP_ONLY") === "1") {
-      appFilter = Quickshell.env("OVERVIEW_INITIAL_APP") || (Hyprland.activeToplevel ? Hyprland.activeToplevel.lastIpcObject.class : "") || ""
+      appFilter = Quickshell.env("OVERVIEW_INITIAL_APP") || (focusedWindow ? focusedWindow.lastIpcObject.class : "") || ""
       filterWorkspace = 0
     }
     if (shown) {

@@ -26,6 +26,10 @@ function matches(window, query) {
     window.workspace ? "Desktop " + (window.workspace.name || window.workspace.id) + " Desktop " + String(window.workspace.name || window.workspace.id).split(":").pop() : ""].join(" "));
   return normalize(query).trim().split(/\s+/).every(word => haystack.indexOf(word) >= 0);
 }
+function focusedWindow(active, windows) {
+  // Hyprland's activeToplevel can be empty until its first focus event.
+  return active || windows.find(w => w.wayland && w.wayland.activated) || null;
+}
 function selectionIndex(windows, address, fallback) {
   const found = windows.findIndex(w => w.address === address);
   return found >= 0 ? found : Math.max(0, Math.min(fallback, windows.length - 1));
@@ -72,4 +76,4 @@ function palette(text) {
   }
   return colors;
 }
-if (typeof module !== "undefined") module.exports = { normalize, workspaceKey, workspaceKeys, matches, selectionIndex, revealOffset, liveAddresses, defaults, setting, settings, palette };
+if (typeof module !== "undefined") module.exports = { normalize, workspaceKey, workspaceKeys, matches, focusedWindow, selectionIndex, revealOffset, liveAddresses, defaults, setting, settings, palette };

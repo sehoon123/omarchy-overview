@@ -37,6 +37,14 @@ test('per-monitor strip includes empty slots and parked desktops, but not dorman
   assert.deepEqual(L.workspaceKeys(order, live, info, 'DP-2', true), ['name:Side:1']);
   assert.deepEqual(L.workspaceKeys(order, live, info, 'DP-1', false), order);
 });
+test('cold start uses native Wayland activation until Hyprland sends focus metadata', () => {
+  const idle = { address: 'a', wayland: { activated: false } };
+  const active = { address: 'b', wayland: { activated: true } };
+  assert.equal(L.focusedWindow(null, [idle, {}, active]), active);
+  assert.equal(L.focusedWindow(idle, [idle, active]), idle);
+  assert.equal(L.focusedWindow(null, [idle, {}]), null);
+  assert.equal(L.focusedWindow(null, []), null);
+});
 test('selection is address-stable across reorder and removal', () => {
   assert.equal(L.selectionIndex(windows, 'b', 0), 1); // Prefer the focused window on opening.
   assert.equal(L.selectionIndex(windows, 'closed', 0), 0);

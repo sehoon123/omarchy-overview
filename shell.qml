@@ -64,6 +64,7 @@ ShellRoot {
         w.lastIpcObject.monitor === (observedMonitors.find(m => m.name === displayName) || {}).id)))
   readonly property var windows: scopeWindows.filter(w => Logic.matches(w, query))
   readonly property var workspaceIds: Logic.workspaceKeys(desktopOrder, Hyprland.workspaces.values, desktopInfo, displayName, perMonitor)
+  onWorkspaceIdsChanged: Qt.callLater(revealDesktop)
   // Title/focus metadata churn must not rerun the geometry search.
   readonly property string layoutKey: JSON.stringify(windows.map(w => aspectFor(w)))
   readonly property var placements: OverviewLayout.arrange(JSON.parse(layoutKey), stage.width, stage.height)
@@ -103,7 +104,8 @@ ShellRoot {
     filterWorkspace = Logic.workspaceKey(Hyprland.focusedWorkspace) || 1
     appFilter = mode === "app" && focusedWindow ? focusedWindow.lastIpcObject.class || "" : ""
     if (mode === "app") filterWorkspace = 0
-    selected = 0; selectedAddress = windows.length ? windows[0].address : ""; keyboardSelection = false
+    selected = Logic.selectionIndex(windows, focusedWindow ? focusedWindow.address : "", 0)
+    selectedAddress = windows[selected] ? windows[selected].address : ""; keyboardSelection = false
     input.cancelDrag(); input.hovered = ({ kind: "background", key: "background" })
     message = ""; undoRecord = null; pendingUiAction = null
     closeWhenDone = false
@@ -112,6 +114,7 @@ ShellRoot {
     lastFocusedAddress = focusedWindow ? focusedWindow.address : ""
     shown = true; openCount++
     stateRefresh.restart()
+    Qt.callLater(revealDesktop)
     search.focusInput()
   }
   function finishClose() {
@@ -236,11 +239,20 @@ ShellRoot {
   function undo() { if (undoRecord && !busy) runAction(["undo", JSON.stringify(undoRecord)]) }
   function desktopLabel(id) { return (desktopInfo[String(id)] || {}).label || "Desktop " + String(id).replace(/^name:/, "") }
   function switchDesktop(id) { if (id) runAction(["switch", String(id)], true) }
+  function revealDesktop() {
+    if (!shown || input.dragging || input.pressedZone) return
+    const item = desktops.itemAt(workspaceIds.indexOf(filterWorkspace))
+    if (!item) return
+    desktopFlick.contentX = Logic.revealOffset(desktopFlick.contentX, desktopFlick.width,
+      desktopFlick.contentWidth, desktopRow.x + item.x, item.width, desktopFlick.edgePadding)
+  }
   function navigateDesktop(direction) {
     if (!workspaceIds.length || input.dragging || busy || settingsShown) return
     const i = Math.max(0, workspaceIds.indexOf(filterWorkspace))
     filterWorkspace = workspaceIds[Math.max(0, Math.min(workspaceIds.length - 1, i + (direction === "next" ? 1 : -1)))]
     appFilter = ""
+    // Hover preview must not move the strip under the pointer; keyboard navigation may.
+    Qt.callLater(revealDesktop)
   }
   function choose(index) {
     if (input.dragging) return
@@ -538,9 +550,11 @@ ShellRoot {
           width: Math.max(0, Math.min(parent.width - 270, desktopRow.width + edgePadding * 2))
           height: parent.height; contentWidth: desktopRow.width + edgePadding * 2; contentHeight: height
           interactive: false; clip: true
+          onWidthChanged: Qt.callLater(root.revealDesktop)
           Row {
             id: desktopRow
             x: desktopFlick.edgePadding; y: 18; spacing: 24
+            onPositioningComplete: Qt.callLater(root.revealDesktop)
             Repeater {
               id: desktops
               model: root.workspaceIds

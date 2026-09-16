@@ -30,6 +30,13 @@ function selectionIndex(windows, address, fallback) {
   const found = windows.findIndex(w => w.address === address);
   return found >= 0 ? found : Math.max(0, Math.min(fallback, windows.length - 1));
 }
+function revealOffset(offset, viewportWidth, contentWidth, start, itemWidth, margin) {
+  if (viewportWidth <= 0) return 0;
+  const left = Math.max(0, start - margin), right = Math.min(contentWidth, start + itemWidth + margin);
+  if (right - left > viewportWidth || left < offset) offset = left;
+  else if (right > offset + viewportWidth) offset = right - viewportWidth;
+  return Math.max(0, Math.min(Math.max(0, contentWidth - viewportWidth), offset));
+}
 function liveAddresses(windows, priority, limit) {
   return priority.concat(windows.map(w => w.address)).filter((a, i, list) => a && list.indexOf(a) === i).slice(0, limit);
 }
@@ -65,4 +72,4 @@ function palette(text) {
   }
   return colors;
 }
-if (typeof module !== "undefined") module.exports = { normalize, workspaceKey, workspaceKeys, matches, selectionIndex, liveAddresses, defaults, setting, settings, palette };
+if (typeof module !== "undefined") module.exports = { normalize, workspaceKey, workspaceKeys, matches, selectionIndex, revealOffset, liveAddresses, defaults, setting, settings, palette };

@@ -116,7 +116,10 @@ word navigation with those chords, like macOS. Remove those two bindings from
 Within Overview they preview adjacent desktops without closing the overview.
 
 Overview opens on the current desktop, or on the current application's windows
-when using App Expose. Hover-preview and All are convenience extensions.
+when using App Expose. Initial keyboard selection prefers the previously focused
+window, so Enter/Quick Look start where you were working. The desktop strip
+reveals the current desktop on opening and keeps Ctrl+Left/Right destinations
+visible, even in long lists. Hover-preview and All are convenience extensions.
 Window titles remain in the language supplied by applications.
 
 ## Per-monitor workspaces

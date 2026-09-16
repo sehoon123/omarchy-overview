@@ -27,14 +27,18 @@ wallpaper-backed UI. Added explicit drag cancellation, address-targeted moves,
 confirmation polling, Undo, and persistent desktop ordering/empty placeholders.
 A 550 ms hover previews another desktop; All keeps cross-desktop discovery available.
 Desktop dragging changes the overview's saved order without renumbering Hyprland IDs.
+To preserve orientation, opening prefers the previously focused window and reveals
+its desktop in a long Spaces strip. Keyboard desktop navigation also reveals its
+target; hover-preview does not unexpectedly scroll the strip beneath the pointer.
 
 ## Intentional boundaries
 
 Fullscreen Spaces / Split View are compositor-specific, not just overview widgets.
 This implementation leaves Hyprland's tiling, fullscreen and grouping semantics alone.
 It does not install compositor plugins, repurpose existing gestures, or add hot corners.
-Normal desktops from multiple monitors remain accessible, unlike Apple's local-display
-behavior. See README.md for keyboard tradeoffs, persistence, and remaining limitations.
+Without a per-monitor plugin, normal desktops from multiple monitors remain
+accessible. With Per-monitor Workspaces, the overview follows the opening display's
+slots. See README.md for keyboard tradeoffs, persistence, and remaining limitations.
 
 ## Hyprland sources
 

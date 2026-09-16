@@ -38,9 +38,21 @@ test('per-monitor strip includes empty slots and parked desktops, but not dorman
   assert.deepEqual(L.workspaceKeys(order, live, info, 'DP-1', false), order);
 });
 test('selection is address-stable across reorder and removal', () => {
+  assert.equal(L.selectionIndex(windows, 'b', 0), 1); // Prefer the focused window on opening.
+  assert.equal(L.selectionIndex(windows, 'closed', 0), 0);
   assert.equal(L.selectionIndex([...windows].reverse(), 'a', 0), 1);
   assert.equal(L.selectionIndex(windows.slice(0, 1), 'b', 1), 0);
   assert.equal(L.selectionIndex([], 'a', 5), 0);
+});
+test('desktop reveal scrolls minimally with room for outlines and close buttons', () => {
+  assert.equal(L.revealOffset(0, 400, 1200, 876, 148, 16), 640);
+  assert.equal(L.revealOffset(700, 400, 1200, 188, 148, 16), 172);
+  assert.equal(L.revealOffset(120, 400, 1200, 188, 148, 16), 120);
+  assert.equal(L.revealOffset(700, 400, 1200, 1036, 148, 16), 800);
+  assert.equal(L.revealOffset(999, 400, 320, 16, 148, 16), 0);
+  assert.equal(L.revealOffset(100, 0, 1200, 188, 148, 16), 0);
+  assert.equal(L.revealOffset(0, 100, 1200, 188, 148, 16), 172);
+  assert.equal(L.revealOffset(172, 100, 1200, 188, 148, 16), 172);
 });
 test('live budget deduplicates and always prioritizes preview/drag/selection', () => {
   assert.deepEqual(L.liveAddresses(windows, ['b', 'b', '', 'a'], 1), ['b']);

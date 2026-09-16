@@ -1,5 +1,5 @@
 const assert = require('node:assert/strict');
-const { arrange, neighbor } = require('./Layout.js');
+const { aspectFor, arrange, neighbor } = require('./Layout.js');
 
 for (const [width, height] of [[2304, 1114], [1260, 680], [740, 1100], [132, 68]]) {
   for (let count = 1; count <= 40; count++) {
@@ -28,4 +28,31 @@ assert.deepEqual(arrange([1], 0, 100), []);
 const rects = arrange([1, 1], 1000, 400);
 assert.equal(neighbor(rects, 0, 'right'), 1);
 assert.equal(neighbor(rects, 1, 'left'), 0);
-console.log('Layout tests passed (160 screen/window-count combinations).');
+// Captures can arrive late or disagree with Hyprland's stale IPC dimensions.
+const window = { lastIpcObject: { size: [1600, 1000] } };
+assert.equal(aspectFor(window, null), 1.6);
+assert.equal(aspectFor(window, { sourceSize: { width: 800, height: 1000 } }), .8);
+assert.equal(aspectFor(window, { sourceSize: { width: 0, height: 1000 } }), 1.6);
+assert.equal(aspectFor(window, { sourceSize: { width: Infinity, height: 1000 } }), 1.6);
+assert.equal(aspectFor({}, null), 1.6);
+assert.equal(aspectFor({ lastIpcObject: { size: [-100, 100] } }, null), 1.6);
+assert.deepEqual(arrange([1], NaN, 100), []);
+for (const compact of [false, true]) {
+  for (const ratios of [[.8, .95, 1.1], [.1, 1, 8], [.005, .8, 20]]) {
+    const width = compact ? 132 : 2304, height = compact ? 68 : 900;
+    const gap = Math.min(compact ? 6 : 44, width / 20, height / 20);
+    const fitted = arrange(ratios, width, height, compact);
+    assert.equal(fitted.length, ratios.length);
+    fitted.forEach((r, i) => assert(Math.abs(r.width / r.height - ratios[i]) < 1e-9));
+    for (const row of new Set(fitted.map(r => r.row))) {
+      const group = fitted.filter(r => r.row === row);
+      const last = group[group.length - 1];
+      assert(Math.abs(group[0].x - (width - last.x - last.width)) < 1e-9, 'Row must be centered');
+      for (let i = 1; i < group.length; i++) {
+        assert.equal(group[i].y, group[0].y);
+        assert(Math.abs(group[i].x - group[i - 1].x - group[i - 1].width - gap) < 1e-9, 'Visible gaps must match');
+      }
+    }
+  }
+}
+console.log('Layout tests passed (160 screen/window-count combinations + capture/spacing regressions).');

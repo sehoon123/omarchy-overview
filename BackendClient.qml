@@ -16,11 +16,11 @@ Item {
   signal frameNeeded(int ticket, string address)
 
   function send(packet) { worker.write(JSON.stringify(packet) + "\n") }
-  function request(args, cover) {
+  function request(args, cover, monitor) {
     if (!ready || Object.keys(pending).length) return 0
     const id = ++sequence
     pending = Object.assign({}, pending, { [id]: args[0] })
-    send({ type: "request", id: id, args: args, cover: cover || {} })
+    send({ type: "request", id: id, args: args, cover: cover || {}, monitor: monitor || "" })
     return id
   }
   function cancel(id) { if (ready && pending[id]) send({ type: "cancel", id: id }) }

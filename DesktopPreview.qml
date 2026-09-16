@@ -3,7 +3,8 @@ import "Layout.js" as OverviewLayout
 
 Item {
   id: root
-  property int desktopId: 1
+  property var desktopId: 1
+  property string label: "Desktop " + desktopId
   property var members: []
   property var captureFor: address => null
   property string wallpaper: ""
@@ -14,10 +15,8 @@ Item {
   property bool canRemove: false
   property color accent: "#76b5ff"
   width: 148; height: 108
-  readonly property var miniLayout: OverviewLayout.arrange(members.map(w => {
-    const size = w.lastIpcObject.size
-    return size && size[1] > 0 ? size[0] / size[1] : 1.6
-  }), 132, 68, true)
+  readonly property var miniLayout: OverviewLayout.arrange(
+    members.map(w => OverviewLayout.aspectFor(w, captureFor(w.address))), 132, 68, true)
   property alias removeButton: removeCircle
 
   Rectangle {
@@ -51,7 +50,8 @@ Item {
   }
   Text {
     y: 93; anchors.horizontalCenter: parent.horizontalCenter
-    text: "Desktop " + root.desktopId
+    text: root.label
+    width: parent.width; horizontalAlignment: Text.AlignHCenter; elide: Text.ElideRight
     color: "#f0f1f5"; font.pixelSize: 12
     style: Text.Outline; styleColor: "#66000000"
   }

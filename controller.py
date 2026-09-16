@@ -9,6 +9,8 @@ import sys
 import time
 
 import hypr_ipc
+from workspaces import (ws_id, workspace_ref, workspace_key, monitor_keys, slot_number,
+                        plugin_count, catalog, scoped_order, next_desktop, lua_string, workspace_sort_key)
 
 STATE = Path(os.environ.get('OVERVIEW_STATE_DIR', str(Path(os.environ.get('XDG_STATE_HOME', str(Path.home() / '.local/state'))) / 'omarchy/overview')))
 
@@ -19,13 +21,6 @@ def hypr(*args, json_output=False):
 
 def dispatch(expr):
     return hypr('dispatch', expr)
-
-
-def ws_id(value):
-    value = int(value)
-    if not 0 < value < 2147483647:
-        raise ValueError('Invalid desktop number')
-    return value
 
 
 def address(value):
@@ -53,14 +48,16 @@ def wait_for(test):
 
 
 def merge_order(saved, live):
-    return list(dict.fromkeys([ws_id(i) for i in saved] + sorted(ws_id(i) for i in live)))
+    return list(dict.fromkeys([workspace_ref(i) for i in saved] +
+                              sorted((workspace_ref(i) for i in live), key=workspace_sort_key)))
 
 
-def read_order():
-    live = [w['id'] for w in hypr('-j', 'workspaces', json_output=True) if w['id'] > 0]
+def read_order(live=None):
+    if live is None:
+        live = [workspace_key(w) for w in hypr('-j', 'workspaces', json_output=True) if workspace_key(w)]
     try:
         saved = json.loads((STATE / 'desktops.json').read_text())
-        if saved.get('version') != 1 or not isinstance(saved.get('order'), list):
+        if saved.get('version') not in (1, 2) or not isinstance(saved.get('order'), list):
             raise ValueError('Invalid saved desktop list')
         return merge_order(saved['order'], live)
     except FileNotFoundError:
@@ -69,69 +66,110 @@ def read_order():
 
 def save_order(order):
     tmp = STATE / 'desktops.json.tmp'
-    tmp.write_text(json.dumps({'version': 1, 'order': order}, indent=2) + '\n')
+    tmp.write_text(json.dumps({'version': 2 if any(isinstance(i, str) for i in order) else 1,
+                               'order': order}, indent=2) + '\n')
     tmp.replace(STATE / 'desktops.json')
 
 
+def desktop_state():
+    live = hypr('-j', 'workspaces', json_output=True)
+    monitors = hypr('-j', 'monitors', json_output=True)
+    count = plugin_count()
+    slots, _ = catalog([], live, monitors, count)
+    order = read_order(slots + [workspace_key(w) for w in live if workspace_key(w)])
+    order, info = catalog(order, live, monitors, count)
+    return order, info, monitors, count
+
+
+def dispatch_to(target, expression, restore=False):
+    # Missing named slots are created on the focused screen, not the screen
+    # encoded in their name. Focus the owner atomically, then restore for moves.
+    monitor = ''
+    if isinstance(target, str):
+        live = hypr('-j', 'workspaces', json_output=True)
+        monitor = next((w['monitor'] for w in live if workspace_key(w) == target), '')
+        if not monitor:
+            keys = monitor_keys(hypr('-j', 'monitors', json_output=True))
+            monitor = next((name for name, prefix in keys.items() if slot_number(target, prefix)), '')
+    if not monitor:
+        return dispatch(expression)
+    body = 'local origin = hl.get_active_monitor(); ' if restore else ''
+    body += f'hl.dispatch(hl.dsp.focus({{ monitor = {lua_string(monitor)} }})); '
+    body += f'hl.dispatch({expression}); '
+    if restore:
+        body += 'if origin then hl.dispatch(hl.dsp.focus({ monitor = origin.name })) end '
+    return dispatch('function() ' + body + 'end')
+
+
 def move_window(addr, target):
-    addr, target = address(addr), ws_id(target)
+    addr, target = address(addr), workspace_ref(target)
     before = find_window(addr)
     if not before:
         raise ValueError('That window has already closed')
-    if before['workspace']['id'] <= 0:
+    if not workspace_key(before['workspace']):
         raise ValueError('Special workspaces are not managed here')
-    if before['workspace']['id'] == target:
+    if workspace_key(before['workspace']) == target:
         return []
     # A grouped window can move its whole group. Include those members in Undo.
     members = set(before.get('grouped', []) + [addr])
     original = [w for w in clients() if w['address'] in members]
-    dispatch(f'hl.dsp.window.move({{ window = "address:{addr}", workspace = "{target}", follow = false }})')
-    wait_for(lambda: (find_window(addr) or {}).get('workspace', {}).get('id') == target)
+    dispatch_to(target, f'hl.dsp.window.move({{ window = "address:{addr}", workspace = {lua_string(target)}, follow = false }})', restore=True)
+    wait_for(lambda: workspace_key((find_window(addr) or {}).get('workspace')) == target)
     after = {w['address']: w for w in clients()}
-    return [{'address': w['address'], 'source': w['workspace']['id'], 'target': target}
-            for w in original if w['workspace']['id'] != target and
-            after.get(w['address'], {}).get('workspace', {}).get('id') == target]
+    return [{'address': w['address'], 'source': workspace_key(w['workspace']), 'target': target}
+            for w in original if workspace_key(w['workspace']) != target and
+            workspace_key(after.get(w['address'], {}).get('workspace')) == target]
 
 
 def focus_desktop(target):
-    target = ws_id(target)
-    dispatch(f'hl.dsp.focus({{ workspace = "{target}" }})')
-    wait_for(lambda: hypr('-j', 'activeworkspace', json_output=True)['id'] == target)
+    target = workspace_ref(target)
+    dispatch_to(target, f'hl.dsp.focus({{ workspace = {lua_string(target)} }})')
+    wait_for(lambda: workspace_key(hypr('-j', 'activeworkspace', json_output=True)) == target)
 
 
-def act(args):
-    order = read_order()[:]
+def act(args, monitor=''):
+    order, info, monitors, count = desktop_state()
     old_order = order[:]
+    screen = (next((m for m in monitors if m['name'] == monitor), None) if monitor else
+              next((m for m in monitors if m.get('focused')), None))
+    if monitor and not screen:
+        raise ValueError('That monitor is no longer available')
+    monitor = screen['name'] if screen else ''
+    local = scoped_order(order, info, monitor, count)
+    prefix = monitor_keys(monitors).get(monitor, '') if count else ''
     action = args[0]
     out = {'ok': True}
+    label = lambda ref: info.get(str(ref), {}).get('label', 'Desktop ' + str(ref).removeprefix('name:').rsplit(':', 1)[-1])
     if action == 'state':
         pass
     elif action == 'prime':
         raise ValueError('Preview capture requires the resident worker and a viewport lease')
     elif action == 'create':
-        target = ws_id(max(order) + 1)
+        target = next_desktop(order, prefix)
         order.append(target)
-        out.update(created=target, message=f'Desktop {target} added')
+        out.update(created=target, message=f'{label(target)} added')
     elif action == 'move':
-        target = ws_id(max(order) + 1) if args[2] == 'new' else ws_id(args[2])
-        if args[2] != 'new' and target not in order:
+        target = next_desktop(order, prefix) if args[2] == 'new' else workspace_ref(args[2])
+        if args[2] != 'new' and target not in local:
             raise ValueError('Destination desktop is no longer available')
         moved = move_window(args[1], target)
         order = merge_order(order, [target])
-        out.update(target=target, message=f'Moved to Desktop {target}', undo={'moves': moved, 'order': old_order})
+        out.update(target=target, message=f'Moved to {label(target)}', undo={'moves': moved, 'order': old_order})
     elif action == 'switch':
-        target = ws_id(args[1])
-        if target not in order:
+        target = workspace_ref(args[1])
+        if target not in local:
             raise ValueError('That desktop is no longer available')
         focus_desktop(target)
     elif action == 'step':
-        current = hypr('-j', 'activeworkspace', json_output=True)['id']
-        index = order.index(current) if current in order else 0
+        if not local:
+            raise ValueError('No desktops on this monitor')
+        current = workspace_key(screen['activeWorkspace'] if screen else hypr('-j', 'activeworkspace', json_output=True))
+        index = local.index(current) if current in local else 0
         offset = 1 if args[1] == 'next' else -1
-        focus_desktop(order[max(0, min(len(order) - 1, index + offset))])
+        focus_desktop(local[max(0, min(len(local) - 1, index + offset))])
     elif action == 'reorder':
-        source, before = ws_id(args[1]), ws_id(args[2])
-        if source not in order or before not in order:
+        source, before = workspace_ref(args[1]), workspace_ref(args[2])
+        if source not in local or before not in local:
             raise ValueError('Desktop is no longer available')
         if source != before:
             destination = order.index(before)
@@ -139,22 +177,22 @@ def act(args):
             order.insert(destination, source)
         out['message'] = 'Desktop order updated'
     elif action == 'remove':
-        source = ws_id(args[1])
-        if source not in order or len(order) < 2:
-            raise ValueError('Keep at least one desktop')
-        workspace = next((w for w in hypr('-j', 'workspaces', json_output=True) if w['id'] == source), {})
-        if workspace.get('ispersistent'):
-            raise ValueError('This desktop is pinned in your Hyprland configuration')
-        index = order.index(source)
-        target = order[index - 1] if index else order[1]
+        source = workspace_ref(args[1])
+        if source not in local or len(local) < 2:
+            raise ValueError('Keep at least one desktop on this monitor')
+        if info[str(source)]['pinned']:
+            raise ValueError('This desktop is pinned by Hyprland or Per-monitor Workspaces')
+        index = local.index(source)
+        target = local[index - 1] if index else local[1]
         moved = []
         try:
             for w in clients():
-                if w['workspace']['id'] == source:
+                if workspace_key(w['workspace']) == source:
                     moved.extend(move_window(w['address'], target))
-            if hypr('-j', 'activeworkspace', json_output=True)['id'] == source:
+            if (any(workspace_key(m.get('activeWorkspace')) == source for m in monitors) or
+                    workspace_key(hypr('-j', 'activeworkspace', json_output=True)) == source):
                 focus_desktop(target)
-            if any(w['workspace']['id'] == source for w in clients()):
+            if any(workspace_key(w['workspace']) == source for w in clients()):
                 raise RuntimeError('Some windows could not be moved; desktop was kept')
         except Exception:
             # Best-effort rollback; never forget a desktop containing windows.
@@ -165,7 +203,7 @@ def act(args):
                     pass
             raise
         order.remove(source)
-        out.update(removed=source, target=target, message=f'Desktop {source} removed · windows kept',
+        out.update(removed=source, target=target, message=f'{label(source)} removed · windows kept',
                    undo={'moves': moved, 'order': old_order})
     elif action == 'undo':
         record = json.loads(args[1])
@@ -177,9 +215,9 @@ def act(args):
             addr = address(entry['address'])
             w = find_window(addr)
             # Do not override subsequent moves made outside Overview.
-            if w and w['workspace']['id'] == ws_id(entry['target']):
-                move_window(addr, ws_id(entry['source']))
-            elif not w or w['workspace']['id'] != ws_id(entry['source']):
+            if w and workspace_key(w['workspace']) == workspace_ref(entry['target']):
+                move_window(addr, workspace_ref(entry['source']))
+            elif not w or workspace_key(w['workspace']) != workspace_ref(entry['source']):
                 skipped += 1
         order = merge_order(record.get('order', []), order)
         out['message'] = 'Undone' if not skipped else 'Undone · changed or closed windows skipped'
@@ -188,7 +226,8 @@ def act(args):
     # Queries, capture and focus operations must not rewrite desktop state.
     if order != old_order:
         save_order(order)
-    out['order'] = order
+    _, info = catalog(order, hypr('-j', 'workspaces', json_output=True), monitors, count)
+    out.update(order=order, desktops=info, perMonitor=bool(count))
     return out
 
 

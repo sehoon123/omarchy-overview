@@ -98,8 +98,11 @@ there is no claim of transactional protection against SIGKILL.
 Main window delegates use the native stable toplevel model, not a newly filtered
 JS array. Each maps its address to a filtered layout index; only in-layout cards
 participate in hit testing. Search/scope changes do not destroy cards or captures.
-Selection is address-stable across metadata updates and reorder. An aspect-ratio
-string separates geometry dependencies from title/focus updates.
+Selection is address-stable across metadata updates and reorder. Packing, window
+cards and desktop miniatures share `Layout.aspectFor`: captured dimensions first,
+IPC dimensions only until a frame is available. Mixing those sources left holes
+when IPC sizes lagged a resize. Valid portrait/ultrawide ratios are not clamped.
+An aspect-ratio string separates geometry dependencies from title/focus updates.
 
 The always-focused search TextInput handles Unicode/IME composition natively. The
 shared key handler yields composition keys and briefly guards forwarded commit
@@ -133,7 +136,8 @@ windows were not closed or moved between desktops.
 
 `overview status` exposes worker PID/restarts, completed requests, last transaction
 time, per-window generations/freshness/timestamps, query/selection/Quick Look,
-settings, delegate/retained-frame counts, live priorities and `firstFrameMs`. Qt's first
+settings, delegate/retained-frame counts, live priorities, target layout rectangles
+and actual hit-test surfaces, and `firstFrameMs`. Qt's first
 rendered frame is separate from IPC availability and compositor presentation.
 `tests/benchmark_open.py` does not claim to measure photons reaching the display.
 

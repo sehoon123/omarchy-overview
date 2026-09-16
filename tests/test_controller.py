@@ -6,6 +6,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import controller as c
 
 class ControllerTests(unittest.TestCase):
+    def setUp(self):
+        # Unit tests never consult or mutate the running desktop/configuration.
+        self.hypr = patch.object(c, 'hypr', side_effect=lambda *args, **kw: {'id': 1} if 'activeworkspace' in args else []).start()
+        patch.object(c, 'plugin_count', return_value=0).start()
+        self.addCleanup(patch.stopall)
+
     def test_merge_keeps_saved_order(self):
         self.assertEqual(c.merge_order([3, 1], [1, 2, 3]), [3, 1, 2])
 

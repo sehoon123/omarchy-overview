@@ -119,6 +119,20 @@ Overview opens on the current desktop, or on the current application's windows
 when using App Expose. Hover-preview and All are convenience extensions.
 Window titles remain in the language supplied by applications.
 
+## Per-monitor workspaces
+
+The `mmsbrggr.per-monitor-workspaces` widget is detected from Omarchy's
+`shell.json`; no extra Overview setting or keybinding change is needed.
+The strip, All/App Expose and previous/next navigation stay on the opening
+monitor (the focused monitor when Overview is closed). Empty configured slots
+are included and labelled Desktop 1…N. Parked desktops remain reachable.
+
+Window moves, Undo and saved ordering use stable workspace names, not Hyprland's
+recycled negative IDs. **+** adds an extra slot on this monitor. Configured slots
+cannot be removed here; change the widget's `count` setting instead. Extra slots
+can be removed normally. Numbered and other named workspaces still work without
+the widget; existing numbered desktop order is preserved.
+
 ## Safety and semantics
 
 - Dragging uses a stable mouse grab and an independent ghost. Hovering another
@@ -137,8 +151,8 @@ Window titles remain in the language supplied by applications.
   `~/.local/state/omarchy/overview/desktops.json`. Empty placeholders become real
   Hyprland workspaces when visited or when a window is dropped there.
 - Reordering does not renumber Hyprland workspaces or change Super + number bindings.
-- Special/scratchpad workspaces are excluded. Normal desktops on other monitors
-  remain accessible. This differs from macOS's display-local Mission Control.
+- Special/scratchpad workspaces are excluded by name, not by the sign of their ID.
+  Without the per-monitor widget, normal desktops on other monitors remain accessible.
 - Capture producers are shared and keyed by window address, so desktop previews,
   the main view and drag ghosts retain the same last frame across model resets.
 - Hyprland 0.56 skips captures of fully off-screen scrolling windows. For the
@@ -178,6 +192,7 @@ scrolling/dwindle layouts, groups, and gestures remain in control.
 - `DragSurface.qml`: stable pointer/drag state machine
 - `Layout.js`: aspect-preserving layout and spatial keyboard navigation
 - `controller.py`: validated workspace actions, persistence, confirmation, Undo
+- `workspaces.py`: stable selectors and optional per-monitor slot/monitor catalog
 - `integrations/omarchy-overview`: launcher installed to `~/.local/bin/`
 - `integrations/sehun-overview.service`: session-scoped user service
 - `integrations/bindings.example.lua`: optional shortcuts; not a full desktop config
@@ -221,12 +236,15 @@ Do not run it while interacting with the desktop or editing Hyprland settings.
 
 `tests/verify_live.py` is an opt-in compositor integration test. It requires a
 disposable window with app ID `overview-verification` on workspace 90 and unused
-workspaces 91/92. It uses isolated state, checks that other windows stay on their
+workspaces 91/92. It follows the active numeric/per-monitor mode when creating
+destinations, uses isolated state, checks that other windows stay on their
 original desktops, and closes only its disposable test window in cleanup.
 
 ## Rollback / removal
 
 See [INSTALL.md](INSTALL.md#update-or-remove). Stop the service before restoring a
 backup or an earlier Git revision. Preserve your own `settings.json` and the
-separate desktop-order state unless you intentionally want to reset them. Never
+separate desktop-order state unless you intentionally want to reset them. Named
+orders use state version 2 (version 1 numeric state is still read); rolling back
+to a pre-named-workspace release also requires restoring its state backup. Never
 replace your entire Hyprland bindings file to remove this application's shortcuts.

@@ -9,13 +9,15 @@ from PIL import Image
 if __name__ != '__main__' or sys.argv[1:] != ['--run']:
  raise SystemExit('Usage: python tests/verify_freshness.py --run (briefly switches desktops)')
 config=Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(config))
+from workspaces import workspace_key, lua_string
 fixture_path=Path(__file__).resolve().parent/'capture-fixture'
 p=['quickshell','ipc','-p',str(config),'call','overview']
 f=['quickshell','ipc','-p',str(fixture_path),'call','fixture']
 def run(*args): return subprocess.run(list(args),check=True,capture_output=True,text=True)
 def j(c): return json.loads(run('hyprctl','-j',c).stdout)
 def state(): return json.loads(run(*p,'status').stdout)
-def focus(ws): run('hyprctl','dispatch',f'hl.dsp.focus({{ workspace = "{ws}" }})')
+def focus(ws): run('hyprctl','dispatch',f'hl.dsp.focus({{ workspace = {lua_string(ws)} }})')
 def card(s): return next(w for w in s['windows'] if w['address']==fixture['address'].removeprefix('0x'))
 def frame():
  end=time.monotonic()+4
@@ -30,7 +32,7 @@ def pixel(s,name):
  path=f'/tmp/overview-fixture-{name}.png';run('grim','-s','1',path)
  with Image.open(path) as im: color=im.getpixel((round(zone['x']+zone['width']*.25),round(zone['y']+zone['height']*.25)))
  Path(path).unlink();return color
-before=j('clients');original=j('activeworkspace')['id'];active=j('activewindow').get('address')
+before=j('clients');original=workspace_key(j('activeworkspace'));active=j('activewindow').get('address')
 assert 90 not in [w['id'] for w in j('workspaces')]
 assert not state()['visible']
 run('quickshell','-p',str(fixture_path),'--no-duplicate','--daemonize')

@@ -19,6 +19,24 @@ test('Unicode normalization and missing metadata', () => {
   assert.ok(L.matches({}, ''));
   assert.ok(!L.matches({}, 'title'));
 });
+test('named desktops have stable selectors; only special workspaces are excluded', () => {
+  assert.equal(L.workspaceKey({ id: -1337, name: 'Main:1' }), 'name:Main:1');
+  assert.equal(L.workspaceKey({ id: -1555, name: 'Main:1' }), 'name:Main:1');
+  assert.equal(L.workspaceKey({ id: -99, name: 'special:scratch' }), 0);
+  assert.equal(L.workspaceKey({ id: 3, name: '3' }), 3);
+  assert.equal(L.workspaceKey(null), 0);
+  assert.ok(L.matches({ workspace: { id: -1337, name: 'Main:2' } }, 'Desktop 2'));
+  assert.ok(L.matches({ workspace: { id: -1337, name: 'Main:2' } }, 'Main:2'));
+});
+test('per-monitor strip includes empty slots and parked desktops, but not dormant global placeholders', () => {
+  const order = [2, 1, 'name:Main:1', 'name:Main:2', 'name:Side:1', 'name:Missing:3'];
+  const info = { 'name:Main:1': { monitor: 'DP-1' }, 'name:Main:2': { monitor: 'DP-1' },
+    'name:Side:1': { monitor: 'DP-2' }, 'name:Missing:3': { monitor: 'DP-2' } };
+  const live = [{ id: -1400, name: 'Missing:3', monitor: { name: 'DP-1' } }];
+  assert.deepEqual(L.workspaceKeys(order, live, info, 'DP-1', true), ['name:Main:1', 'name:Main:2', 'name:Missing:3']);
+  assert.deepEqual(L.workspaceKeys(order, live, info, 'DP-2', true), ['name:Side:1']);
+  assert.deepEqual(L.workspaceKeys(order, live, info, 'DP-1', false), order);
+});
 test('selection is address-stable across reorder and removal', () => {
   assert.equal(L.selectionIndex([...windows].reverse(), 'a', 0), 1);
   assert.equal(L.selectionIndex(windows.slice(0, 1), 'b', 1), 0);

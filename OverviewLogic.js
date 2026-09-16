@@ -3,11 +3,27 @@ function normalize(text) {
   text = String(text || "");
   return (typeof text.normalize === "function" ? text.normalize("NFKC") : text).toLowerCase();
 }
+function workspaceKey(workspace) {
+  if (!workspace) return 0;
+  const name = String(workspace.name || "");
+  if (name === "special" || name.startsWith("special:") || workspace.special) return 0;
+  if (workspace.id > 0 && (!name || name === String(workspace.id))) return workspace.id;
+  return name ? "name:" + name : 0;
+}
+function workspaceKeys(order, live, info, monitor, perMonitor) {
+  const keys = [...new Set(order.concat(live.map(workspaceKey).filter(Boolean)))];
+  return keys.filter(key => {
+    if (!perMonitor) return true;
+    const workspace = live.find(w => workspaceKey(w) === key);
+    const owner = workspace && workspace.monitor ? workspace.monitor.name : (info[String(key)] || {}).monitor;
+    return owner === monitor;
+  });
+}
 function matches(window, query) {
   if (!String(query || "").trim()) return true;
   const ipc = window.lastIpcObject || {};
   const haystack = normalize([window.title, ipc.class, ipc.initialClass,
-    window.workspace ? "Desktop " + window.workspace.id : ""].join(" "));
+    window.workspace ? "Desktop " + (window.workspace.name || window.workspace.id) + " Desktop " + String(window.workspace.name || window.workspace.id).split(":").pop() : ""].join(" "));
   return normalize(query).trim().split(/\s+/).every(word => haystack.indexOf(word) >= 0);
 }
 function selectionIndex(windows, address, fallback) {
@@ -49,4 +65,4 @@ function palette(text) {
   }
   return colors;
 }
-if (typeof module !== "undefined") module.exports = { normalize, matches, selectionIndex, liveAddresses, defaults, setting, settings, palette };
+if (typeof module !== "undefined") module.exports = { normalize, workspaceKey, workspaceKeys, matches, selectionIndex, liveAddresses, defaults, setting, settings, palette };

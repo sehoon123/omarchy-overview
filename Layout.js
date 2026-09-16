@@ -1,7 +1,21 @@
+// Packing and rendering must use the same ratio. IPC sizes can lag captures
+// after a resize/monitor change; retain the last frame's geometry while refreshing.
+function aspectFor(window, capture) {
+  const source = capture && capture.sourceSize;
+  const ipc = window && window.lastIpcObject;
+  const sizes = [source ? [source.width, source.height] : [], ipc && ipc.size || []];
+  for (const size of sizes) {
+    const ratio = size[0] / size[1];
+    if (size[0] > 0 && size[1] > 0 && isFinite(ratio)) return ratio;
+  }
+  return 1.6;
+}
+
 // Qt-independent geometry for a compact, aspect-preserving window overview.
 function arrange(aspects, width, height, compact) {
-  if (!aspects.length || width <= 0 || height <= 0) return [];
-  const ratios = aspects.map(a => Math.max(0.25, Math.min(4, Number(a) || 1.6)));
+  if (!aspects.length || !isFinite(width) || !isFinite(height) || width <= 0 || height <= 0) return [];
+  // Clamping valid portrait/ultrawide ratios would leave empty space in the cells.
+  const ratios = aspects.map(a => Number(a) > 0 && isFinite(Number(a)) ? Number(a) : 1.6);
   const gap = Math.min(compact ? 6 : 44, width / 20, height / 20);
   const labelSpace = compact ? 0 : 34;
   let best = null;
@@ -58,4 +72,4 @@ function neighbor(rects, index, direction) {
   return best;
 }
 
-if (typeof module !== "undefined") module.exports = { arrange, neighbor };
+if (typeof module !== "undefined") module.exports = { aspectFor, arrange, neighbor };

@@ -69,6 +69,7 @@ class Worker:
             if ident <= self.last_id: raise ValueError('Request already seen; not replayed')
             if self.closed or self.active: raise ValueError('Worker is busy')
             if not isinstance(packet.get('cover', {}), dict): raise ValueError('Invalid viewport lease')
+            if not isinstance(packet.get('monitor', ''), str): raise ValueError('Invalid monitor')
             self.last_id = ident
             job = (packet, Gate(ident, self.emit))
             self.active = job
@@ -89,7 +90,7 @@ class Worker:
                     if time.monotonic() >= lock_deadline: raise RuntimeError('Another desktop action is still running')
             if packet['args'][0] == 'prime':
                 return {'ok': True, 'primed': preview.prime(controller, packet['args'][1], packet.get('cover', {}), gate)}
-            return controller.act(packet['args'])
+            return controller.act(packet['args'], packet.get('monitor', ''))
 
     def run(self):
         while True:

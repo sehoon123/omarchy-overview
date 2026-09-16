@@ -1,4 +1,5 @@
 import QtQuick
+import "Layout.js" as OverviewLayout
 
 Item {
   id: root
@@ -12,16 +13,14 @@ Item {
   property color surfaceColor: "#252a36"
   property color textColor: "#f1f2f5"
   readonly property bool hasThumbnail: !!sharedCapture && sharedCapture.hasContent
-  readonly property real aspect: sharedCapture && sharedCapture.sourceSize.height > 0 ? sharedCapture.sourceSize.width / sharedCapture.sourceSize.height
-    : windowInfo && windowInfo.lastIpcObject.size && windowInfo.lastIpcObject.size[1] > 0
-      ? windowInfo.lastIpcObject.size[0] / windowInfo.lastIpcObject.size[1] : 1.6
+  readonly property real aspect: OverviewLayout.aspectFor(windowInfo, sharedCapture)
   property alias surface: frame
 
   Item {
     id: frame
     anchors.centerIn: parent
     width: Math.min(root.width, root.height * root.aspect)
-    height: width / Math.max(.01, root.aspect)
+    height: width / root.aspect
     Repeater {
       model: 3
       delegate: Rectangle {

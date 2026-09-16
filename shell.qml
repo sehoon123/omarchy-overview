@@ -12,7 +12,7 @@ ShellRoot {
   id: root
   property bool shown: Quickshell.env("OVERVIEW_START_HIDDEN") !== "1"
   property string displayName: ""
-  property int filterWorkspace: 1
+  property var filterWorkspace: 1
   property string appFilter: ""
   property int selected: 0
   property bool keyboardSelection: false
@@ -23,6 +23,8 @@ ShellRoot {
   readonly property var previewWindow: windows.find(w => w.address === previewAddress) || null
   property var themeColors: Logic.palette("")
   property var desktopOrder: []
+  property var desktopInfo: ({})
+  property bool perMonitor: false
   property var pendingWindow: null
   property bool busy: false
   property bool closeWhenDone: false
@@ -32,7 +34,7 @@ ShellRoot {
   property var dragSource: null
   property var dragTarget: null
   property point dragPoint: Qt.point(0, 0)
-  property int hoverDesktop: 0
+  property var hoverDesktop: 0
   property int actionTicket: 0
   property bool shutdownRequested: false
   property var pendingUiAction: null
@@ -54,14 +56,14 @@ ShellRoot {
   readonly property string stateHome: Quickshell.env("XDG_STATE_HOME") || Quickshell.env("HOME") + "/.local/state"
   readonly property string wallpaper: "file://" + stateHome + "/omarchy/current/background?v=" + wallpaperRevision
   readonly property var allWindows: Hyprland.toplevels.values.filter(w =>
-    w.lastIpcObject.mapped !== false && w.workspace && w.workspace.id > 0
+    w.lastIpcObject.mapped !== false && Logic.workspaceKey(w.workspace)
   ).slice().sort((a, b) => a.workspace.id - b.workspace.id || a.address.localeCompare(b.address))
-  readonly property var scopeWindows: allWindows.filter(w => (filterWorkspace === 0 || w.workspace.id === filterWorkspace) &&
-    (!appFilter || w.lastIpcObject.class === appFilter) && (!preferences.values.monitorOnly ||
-      w.lastIpcObject.monitor === (panel.screen ? (observedMonitors.find(m => m.name === panel.screen.name) || {}).id : -1)))
+  readonly property var scopeWindows: allWindows.filter(w => (filterWorkspace === 0 || Logic.workspaceKey(w.workspace) === filterWorkspace) &&
+    (!appFilter || w.lastIpcObject.class === appFilter) && (!(perMonitor || preferences.values.monitorOnly) ||
+      (w.workspace && w.workspace.monitor ? w.workspace.monitor.name === displayName :
+        w.lastIpcObject.monitor === (observedMonitors.find(m => m.name === displayName) || {}).id)))
   readonly property var windows: scopeWindows.filter(w => Logic.matches(w, query))
-  readonly property var workspaceIds: [...new Set(desktopOrder.concat(
-    Hyprland.workspaces.values.filter(w => w.id > 0).map(w => w.id).sort((a, b) => a - b)))]
+  readonly property var workspaceIds: Logic.workspaceKeys(desktopOrder, Hyprland.workspaces.values, desktopInfo, displayName, perMonitor)
   // Title/focus metadata churn must not rerun the geometry search.
   readonly property string layoutKey: JSON.stringify(windows.map(w => aspectFor(w)))
   readonly property var placements: OverviewLayout.arrange(JSON.parse(layoutKey), stage.width, stage.height)
@@ -79,8 +81,8 @@ ShellRoot {
 
   Component.onCompleted: {
     displayName = Quickshell.env("OVERVIEW_INITIAL_MONITOR") || (Hyprland.focusedMonitor ? Hyprland.focusedMonitor.name : "")
-    const initialDesktop = Number(Quickshell.env("OVERVIEW_INITIAL_WORKSPACE"))
-    filterWorkspace = initialDesktop > 0 ? initialDesktop : Hyprland.focusedWorkspace && Hyprland.focusedWorkspace.id > 0 ? Hyprland.focusedWorkspace.id : 1
+    const initialDesktop = Quickshell.env("OVERVIEW_INITIAL_WORKSPACE") || ""
+    filterWorkspace = initialDesktop.startsWith("name:") ? initialDesktop : Number(initialDesktop) > 0 ? Number(initialDesktop) : Logic.workspaceKey(Hyprland.focusedWorkspace) || 1
     if (Quickshell.env("OVERVIEW_APP_ONLY") === "1") {
       appFilter = Quickshell.env("OVERVIEW_INITIAL_APP") || (Hyprland.activeToplevel ? Hyprland.activeToplevel.lastIpcObject.class : "") || ""
       filterWorkspace = 0
@@ -91,17 +93,14 @@ ShellRoot {
     }
   }
 
-  function aspectFor(w) {
-    const size = w.lastIpcObject.size
-    return size && size[1] > 0 ? size[0] / size[1] : 1.6
-  }
+  function aspectFor(w) { return OverviewLayout.aspectFor(w, captureFor(w.address)) }
   function captureFor(address) { return captureBank.lookup(address) }
   function openOverview(mode) {
     if (shutdownRequested || activateTimer.running) return
     search.text = ""; previewAddress = ""; settingsShown = false
     paletteFile.reload(); settingsFile.reloadIfIdle()
     displayName = Hyprland.focusedMonitor ? Hyprland.focusedMonitor.name : displayName
-    filterWorkspace = Hyprland.focusedWorkspace && Hyprland.focusedWorkspace.id > 0 ? Hyprland.focusedWorkspace.id : 1
+    filterWorkspace = Logic.workspaceKey(Hyprland.focusedWorkspace) || 1
     appFilter = mode === "app" && focusedWindow ? focusedWindow.lastIpcObject.class || "" : ""
     if (mode === "app") filterWorkspace = 0
     selected = 0; selectedAddress = windows.length ? windows[0].address : ""; keyboardSelection = false
@@ -112,6 +111,7 @@ ShellRoot {
     openedAt = Date.now(); firstFrameMs = -1; framePresented = false; coverSettled = false
     lastFocusedAddress = focusedWindow ? focusedWindow.address : ""
     shown = true; openCount++
+    stateRefresh.restart()
     search.focusInput()
   }
   function finishClose() {
@@ -211,7 +211,7 @@ ShellRoot {
     if (busy || deferForCapture({ kind: "command", args: args, exitAfter: !!exitAfter })) return
     actionName = args[0]
     closeWhenDone = !!exitAfter
-    actionTicket = bridge.request(args)
+    actionTicket = bridge.request(args, {}, shown ? displayName : "")
     busy = actionTicket !== 0
     if (!busy) { closeWhenDone = false; flash("Overview backend is restarting; please try again") }
   }
@@ -223,6 +223,8 @@ ShellRoot {
       flushPendingAction()
       return
     }
+    if (result.desktops) desktopInfo = result.desktops
+    if (typeof result.perMonitor === "boolean") perMonitor = result.perMonitor
     if (Array.isArray(result.order)) desktopOrder = result.order
     if (result.removed && filterWorkspace === result.removed) filterWorkspace = result.target
     if (result.undo) undoRecord = result.undo
@@ -232,7 +234,8 @@ ShellRoot {
     else flushPendingAction()
   }
   function undo() { if (undoRecord && !busy) runAction(["undo", JSON.stringify(undoRecord)]) }
-  function switchDesktop(id) { if (id > 0) runAction(["switch", String(id)], true) }
+  function desktopLabel(id) { return (desktopInfo[String(id)] || {}).label || "Desktop " + String(id).replace(/^name:/, "") }
+  function switchDesktop(id) { if (id) runAction(["switch", String(id)], true) }
   function navigateDesktop(direction) {
     if (!workspaceIds.length || input.dragging || busy || settingsShown) return
     const i = Math.max(0, workspaceIds.indexOf(filterWorkspace))
@@ -304,7 +307,7 @@ ShellRoot {
     else if (z.kind === "undo") undo()
     else if (z.kind === "exit") closeOverview()
     else if (z.kind === "background") {
-      if (filterWorkspace > 0) switchDesktop(filterWorkspace)
+      if (filterWorkspace) switchDesktop(filterWorkspace)
       else closeOverview()
     }
   }
@@ -341,6 +344,24 @@ ShellRoot {
     onFileChanged: paletteFile.reload()
   }
 
+  // Refresh topology on demand/events, never poll or restart the worker.
+  Timer {
+    id: stateRefresh
+    interval: 80
+    onTriggered: {
+      if (!bridge.ready) return
+      if (root.busy || root.preparing) { restart(); return }
+      root.runAction(["state"])
+    }
+  }
+  Connections {
+    target: Hyprland
+    function onRawEvent(event) {
+      if (["createworkspace", "destroyworkspace", "moveworkspace", "renameworkspace", "monitoradded", "monitorremoved", "configreloaded"].includes(event.name))
+        stateRefresh.restart()
+      if (["movewindow", "movewindowv2"].includes(event.name)) Hyprland.refreshToplevels()
+    }
+  }
   BackendClient {
     id: bridge
     workerPath: Quickshell.shellPath("worker.py")
@@ -396,7 +417,7 @@ ShellRoot {
     id: hoverTimer
     interval: 550
     onTriggered: {
-      if (!root.settingsShown && !root.previewAddress && root.hoverDesktop > 0 && (!root.dragSource || root.dragSource.kind === "window")) {
+      if (!root.settingsShown && !root.previewAddress && root.hoverDesktop !== 0 && (!root.dragSource || root.dragSource.kind === "window")) {
         root.filterWorkspace = root.hoverDesktop
         root.appFilter = ""
       }
@@ -449,7 +470,8 @@ ShellRoot {
           capturedAt: source ? source.capturedAt : 0 })
       }
       return JSON.stringify({ visible: root.shown, busy: root.busy, desktop: root.filterWorkspace, appFilter: root.appFilter,
-        order: root.workspaceIds, windows: cards, dragging: input.dragging, message: root.message,
+        order: root.workspaceIds, perMonitor: root.perMonitor, monitor: root.displayName,
+        desktopLabels: root.workspaceIds.map(root.desktopLabel), windows: cards, dragging: input.dragging, message: root.message,
         query: root.query, selectedAddress: root.selectedAddress, previewAddress: root.previewAddress,
         settingsShown: root.settingsShown, settings: preferences.values, settingsError: preferences.error,
         liveAddresses: captureBank.live ? captureBank.liveAddresses : [], delegateCount: windowRepeater.count,
@@ -458,6 +480,7 @@ ShellRoot {
         preparing: root.preparing, primed: Object.keys(previews.attempted), openCount: root.openCount,
         firstFrameMs: root.firstFrameMs, workerPid: bridge.processId, workerRestarts: bridge.restarts,
         completedRequests: bridge.completedCount, lastActionMs: bridge.lastElapsedMs,
+        layout: { x: stage.x, y: stage.y, width: stage.width, height: stage.height, rects: root.placements },
         zones: root.zones().map(z => ({ kind: z.kind, id: z.id, address: z.address, x: z.x, y: z.y, width: z.width, height: z.height })) })
     }
   }
@@ -522,14 +545,15 @@ ShellRoot {
               id: desktops
               model: root.workspaceIds
               delegate: DesktopPreview {
-                required property int modelData
+                required property var modelData
                 desktopId: modelData
-                members: root.allWindows.filter(w => w.workspace.id === modelData)
+                label: root.desktopLabel(modelData)
+                members: root.allWindows.filter(w => Logic.workspaceKey(w.workspace) === modelData)
                 captureFor: address => root.captureFor(address)
                 wallpaper: root.wallpaper; live: root.shown; accent: root.accent
                 highlighted: root.filterWorkspace === modelData
                 hovered: input.hovered.id === modelData && ["desktop", "remove"].indexOf(input.hovered.kind) >= 0 && !input.dragging
-                canRemove: root.workspaceIds.length > 1 && !input.dragging
+                canRemove: root.workspaceIds.length > 1 && !input.dragging && !(root.desktopInfo[String(modelData)] || {}).pinned
                 dropTarget: input.dragging && root.dragTarget && root.dragTarget.kind === "desktop" && root.dragTarget.id === modelData
               }
             }
@@ -582,7 +606,7 @@ ShellRoot {
               (root.keyboardSelection && root.selected === layoutIndex))
             opacity: root.dragSource && root.dragSource.address === modelData.address ? .25 : 1
             label: (modelData.title || modelData.lastIpcObject.class || "Window") +
-              (root.filterWorkspace === 0 ? "  ·  Desktop " + modelData.workspace.name : "")
+              (root.filterWorkspace === 0 ? "  ·  " + root.desktopLabel(Logic.workspaceKey(modelData.workspace)) : "")
             Behavior on x { enabled: positioned && !input.dragging && preferences.values.motion; NumberAnimation { duration: 170; easing.type: Easing.OutCubic } }
             Behavior on y { enabled: positioned && !input.dragging && preferences.values.motion; NumberAnimation { duration: 170; easing.type: Easing.OutCubic } }
           }
@@ -683,7 +707,7 @@ ShellRoot {
           const id = hovered.kind === "desktop" ? hovered.id : 0
           if (id !== root.hoverDesktop) {
             root.hoverDesktop = id; hoverTimer.stop()
-            if (id > 0 && (!pressedZone || input.dragging)) hoverTimer.start()
+            if (id && (!pressedZone || input.dragging)) hoverTimer.start()
           }
         }
         onScrollStrip: delta => {

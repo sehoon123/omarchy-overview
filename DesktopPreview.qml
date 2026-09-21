@@ -32,25 +32,35 @@ Item {
   Repeater {
     model: root.members
     delegate: Rectangle {
+      id: tile
       required property var modelData
       required property int index
+      readonly property var sharedCapture: root.captureFor(modelData.address)
+      readonly property bool bitmapMode: !!sharedCapture && !!sharedCapture.imageSource
       readonly property var rect: root.miniLayout[index] || ({ x: 0, y: 0, width: 0, height: 0 })
       x: 8 + rect.x; y: 8 + rect.y; width: rect.width; height: rect.height
       color: "#cb282c37"
+      Image {
+        objectName: "desktopSnapshot"
+        anchors.fill: parent
+        source: tile.bitmapMode ? tile.sharedCapture.imageSource : ""
+        sourceSize: Qt.size(Math.max(1, Math.ceil(width * 2)), Math.max(1, Math.ceil(height * 2)))
+        fillMode: Image.PreserveAspectFit; cache: false; smooth: true
+        visible: tile.bitmapMode && status === Image.Ready
+      }
       ShaderEffectSource {
         anchors.fill: parent
-        readonly property var sharedCapture: root.captureFor(parent.modelData.address)
-        sourceItem: sharedCapture ? sharedCapture.image : null
+        sourceItem: !tile.bitmapMode && tile.sharedCapture ? tile.sharedCapture.image || null : null
         hideSource: true
-        live: root.live && !!sharedCapture && sharedCapture.hasContent
+        live: root.live && !!tile.sharedCapture && tile.sharedCapture.hasContent
         smooth: true
-        visible: !!sharedCapture && sharedCapture.hasContent
+        visible: !tile.bitmapMode && !!tile.sharedCapture && tile.sharedCapture.hasContent
       }
     }
   }
   Text {
     y: 93; anchors.horizontalCenter: parent.horizontalCenter
-    text: root.label
+    text: root.label; textFormat: Text.PlainText
     width: parent.width; horizontalAlignment: Text.AlignHCenter; elide: Text.ElideRight
     color: "#f0f1f5"; font.pixelSize: 12
     style: Text.Outline; styleColor: "#66000000"

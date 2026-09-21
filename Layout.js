@@ -3,11 +3,13 @@
 function aspectFor(window, capture) {
   const source = capture && capture.sourceSize;
   const ipc = window && window.lastIpcObject;
-  const sizes = [source ? [source.width, source.height] : [], ipc && ipc.size || []];
-  for (const size of sizes) {
-    const ratio = size[0] / size[1];
-    if (size[0] > 0 && size[1] > 0 && isFinite(ratio)) return ratio;
-  }
+  if (source && source.width > 0 && source.height > 0 && isFinite(source.width / source.height))
+    return source.width / source.height;
+  const size = ipc && ipc.size || [];
+  const ratio = size[0] / size[1];
+  // Placeholder cards need usable hit areas and readable titles, not slivers
+  // from transient/off-screen IPC geometry. Real snapshots keep their ratio.
+  if (size[0] > 0 && size[1] > 0 && isFinite(ratio)) return Math.max(.7, Math.min(2.4, ratio));
   return 1.6;
 }
 

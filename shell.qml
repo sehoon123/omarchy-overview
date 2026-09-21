@@ -10,7 +10,9 @@ import "OverviewLogic.js" as Logic
 
 ShellRoot {
   id: root
-  property bool shown: Quickshell.env("OVERVIEW_START_HIDDEN") !== "1"
+  property bool shown: false
+  property bool opening: false
+  property string snapshotError: ""
   property string displayName: ""
   property var filterWorkspace: 1
   property string appFilter: ""
@@ -37,29 +39,23 @@ ShellRoot {
   property var hoverDesktop: 0
   property int actionTicket: 0
   property bool shutdownRequested: false
-  property var pendingUiAction: null
   property int openCount: 0
   property int wallpaperRevision: 0
-  property string lastFocusedAddress: ""
   property bool framePresented: false
-  property bool coverSettled: false
   property double openedAt: 0
   property real firstFrameMs: -1
-  readonly property bool preparing: previews.busy
+  readonly property bool preparing: opening
   // Eager subscriptions make opening independent of CLI context probes.
   readonly property var observedMonitors: Hyprland.monitors.values
-  // Hyprland 0.56.2 crashes on window capture while that window has no monitor.
-  // Client-side hotplug guards cannot close that race. Keep thumbnails disabled
-  // until a compositor-side fix is installed and validated. Window actions work.
+  // Never create native window/toplevel captures on stock Hyprland.
+  // Only the output-snapshot helper supplies memory-only preview images.
   readonly property bool windowCaptureEnabled: false
-  // Additional safeguards for eventual re-enablement: no hidden capture, and
-  // wait after output transitions before creating any window capture session.
+  // Pause output snapshots after topology transitions; no background sampling.
   readonly property var previewScreens: Logic.previewScreens(Quickshell.screens)
   readonly property string previewTopology: JSON.stringify(previewScreens.map(s => [s.name, s.width, s.height]))
   property bool captureTopologyReady: false
   onPreviewTopologyChanged: pauseCaptures()
   readonly property var focusedWindow: Logic.focusedWindow(Hyprland.activeToplevel, Hyprland.toplevels.values)
-  onFocusedWindowChanged: if (openCount > 0) focusedChanged()
   readonly property color accent: preferences.values.followTheme ? themeColors.accent : "#76b5ff"
   readonly property color surfaceColor: preferences.values.followTheme ? themeColors.background : "#202633"
   readonly property color textColor: preferences.values.followTheme ? themeColors.foreground : "#ecf0f7"
@@ -99,20 +95,21 @@ ShellRoot {
       appFilter = Quickshell.env("OVERVIEW_INITIAL_APP") || (focusedWindow ? focusedWindow.lastIpcObject.class : "") || ""
       filterWorkspace = 0
     }
-    if (shown) {
-      openedAt = Date.now(); openCount++
-      Qt.callLater(search.focusInput)
-    }
+    if (Quickshell.env("OVERVIEW_START_HIDDEN") !== "1")
+      Qt.callLater(() => openOverview(Quickshell.env("OVERVIEW_APP_ONLY") === "1" ? "app" : ""))
   }
 
   function pauseCaptures() {
     captureTopologyReady = false
+    if (snapshots) snapshots.cancel()
+    if (captureBank) captureBank.clear()
+    opening = false
     captureSettle.restart()
   }
   function aspectFor(w) { return OverviewLayout.aspectFor(w, captureFor(w.address)) }
   function captureFor(address) { return captureBank.lookup(address) }
   function openOverview(mode) {
-    if (shutdownRequested || activateTimer.running) return
+    if (shutdownRequested || activateTimer.running || shown || opening) return
     search.text = ""; previewAddress = ""; settingsShown = false
     paletteFile.reload(); settingsFile.reloadIfIdle()
     displayName = Hyprland.focusedMonitor ? Hyprland.focusedMonitor.name : displayName
@@ -122,19 +119,32 @@ ShellRoot {
     selected = Logic.selectionIndex(windows, focusedWindow ? focusedWindow.address : "", 0)
     selectedAddress = windows[selected] ? windows[selected].address : ""; keyboardSelection = false
     input.cancelDrag(); input.hovered = ({ kind: "background", key: "background" })
-    message = ""; undoRecord = null; pendingUiAction = null
+    message = ""; undoRecord = null
     closeWhenDone = false
     desktopFlick.contentX = 0
-    openedAt = Date.now(); firstFrameMs = -1; framePresented = false; coverSettled = false
-    lastFocusedAddress = focusedWindow ? focusedWindow.address : ""
-    shown = true; openCount++
+    openedAt = Date.now(); firstFrameMs = -1; framePresented = false
+    opening = true; openCount++; snapshotError = ""
+    // The panel must stay unmapped until the output snapshot is complete.
+    // A cold start waits for the already bounded topology timer, not an empty
+    // first overview that the user would have to close and reopen.
+    if (captureSettle.running && !captureTopologyReady) return
+    beginSnapshot()
+  }
+  function beginSnapshot() {
+    if (opening && !snapshots.request(displayName)) presentOverview()
+  }
+  function presentOverview() {
+    if (!opening || shutdownRequested) return
+    opening = false; shown = true
+    if (snapshotError) flash(snapshotError)
     stateRefresh.restart()
     Qt.callLater(revealDesktop)
-    search.focusInput()
+    Qt.callLater(search.focusInput)
   }
   function finishClose() {
+    opening = false; snapshots.cancel()
     shown = false
-    message = ""; undoRecord = null; pendingUiAction = null
+    message = ""; undoRecord = null
     input.cancelDrag(); hoverTimer.stop()
     previewAddress = ""; settingsShown = false
     finishShutdown()
@@ -156,7 +166,7 @@ ShellRoot {
   }
   function showSettings() {
     if (input.dragging || busy) return
-    previewAddress = ""; settingsShown = true; hoverTimer.stop(); previews.cancel()
+    previewAddress = ""; settingsShown = true; hoverTimer.stop()
     Qt.callLater(settingsPanel.focusFirst)
   }
   function handleKey(event, editing) {
@@ -194,33 +204,15 @@ ShellRoot {
     if (previewAddress && windows[selected]) previewAddress = windows[selected].address
     event.accepted = true
   }
-  function flushPendingAction() {
-    const action = pendingUiAction
-    pendingUiAction = null
-    if (!action) return
-    if (action.kind === "choose") {
-      const index = windows.findIndex(w => w.address === action.address)
-      if (index >= 0) choose(index)
-    } else if (action.kind === "command") runAction(action.args, action.exitAfter)
-    else if (action.kind === "click") clicked(action.zone)
-  }
-  function focusedChanged() {
-    lastFocusedAddress = focusedWindow ? focusedWindow.address : ""
-  }
-  function deferForCapture(action) {
-    if (!preparing) return false
-    pendingUiAction = action
-    previews.cancel()
-    return true
-  }
   function flash(text) { message = text; toastTimer.restart() }
   function closeOverview() {
     input.cancelDrag()
-    if (busy || preparing) { closeWhenDone = true; previews.cancel(); return }
+    if (opening) { finishClose(); return }
+    if (busy) { closeWhenDone = true; return }
     finishClose()
   }
   function runAction(args, exitAfter) {
-    if (busy || deferForCapture({ kind: "command", args: args, exitAfter: !!exitAfter })) return
+    if (busy) return
     actionName = args[0]
     closeWhenDone = !!exitAfter
     actionTicket = bridge.request(args, {}, shown ? displayName : "")
@@ -232,7 +224,6 @@ ShellRoot {
     if (!result.ok) {
       if (closeWhenDone) { finishClose(); return }
       flash(result.error || "Could not complete the action")
-      flushPendingAction()
       return
     }
     if (result.desktops) desktopInfo = result.desktops
@@ -243,7 +234,6 @@ ShellRoot {
     else if (["state", "switch"].indexOf(actionName) < 0) undoRecord = null
     if (result.message) flash(result.message)
     if (closeWhenDone) finishClose()
-    else flushPendingAction()
   }
   function undo() { if (undoRecord && !busy) runAction(["undo", JSON.stringify(undoRecord)]) }
   function desktopLabel(id) { return (desktopInfo[String(id)] || {}).label || "Desktop " + String(id).replace(/^name:/, "") }
@@ -267,7 +257,6 @@ ShellRoot {
     if (input.dragging) return
     if (busy) return
     if (index < 0 || index >= windows.length) { switchDesktop(filterWorkspace); return }
-    if (deferForCapture({ kind: "choose", address: windows[index].address })) return
     pendingWindow = windows[index]
     shown = false
     activateTimer.start()
@@ -318,8 +307,6 @@ ShellRoot {
   }
   function clicked(z) {
     if (busy) return
-    if (!["all", "exit"].includes(z.kind) && deferForCapture(z.kind === "window"
-        ? { kind: "choose", address: z.address } : { kind: "click", zone: z })) return
     if (z.kind === "window") choose(z.index)
     else if (z.kind === "desktop") switchDesktop(z.id)
     else if (z.kind === "all") { filterWorkspace = 0; appFilter = "" }
@@ -391,22 +378,18 @@ ShellRoot {
     onReadyChanged: if (ready) root.runAction(["state"])
     onCompleted: (ticket, result) => { if (ticket === root.actionTicket) root.actionFinished(result) }
   }
-  PreviewScheduler {
-    id: previews
-    bank: captureBank; backend: bridge; windows: root.windows
-    shown: root.windowCaptureEnabled && root.shown && root.captureTopologyReady
-    // The focused monitor may change while this panel remains on its original
-    // screen. Never prime an uncovered display after the pointer crosses over.
-    covered: root.framePresented && root.coverSettled && !!panel.screen && !!Hyprland.focusedMonitor &&
-      panel.screen.name === Hyprland.focusedMonitor.name
-    foregroundBusy: root.busy
-    suspended: !root.windowCaptureEnabled || !root.captureTopologyReady || root.closeWhenDone || !!root.pendingUiAction || input.dragging || !!input.pressedZone ||
-      root.settingsShown || search.settling || search.input.inputMethodComposing
-    workspace: Hyprland.focusedWorkspace ? Hyprland.focusedWorkspace.id : 0
-    monitor: Hyprland.focusedMonitor ? Hyprland.focusedMonitor.id : -1
-    onSettled: {
-      if (root.closeWhenDone && !root.busy) root.finishClose()
-      else root.flushPendingAction()
+  SnapshotClient {
+    id: snapshots
+    helperPath: Quickshell.shellPath("snapshot.py")
+    onCompleted: result => {
+      if (!root.opening) return
+      root.snapshotError = result.ok ? (result.frames && result.frames.length ? "" : result.reason || "")
+        : result.reason || "Snapshot unavailable"
+      if (result.blocked) {
+        captureBank.clear(); root.finishClose(); return
+      }
+      if (result.ok) captureBank.accept(result)
+      root.presentOverview()
     }
   }
   Connections {
@@ -414,18 +397,19 @@ ShellRoot {
     function onFrameSwapped() {
       if (root.shown && !root.framePresented) {
         root.firstFrameMs = Date.now() - root.openedAt
-        root.framePresented = true; coverTimer.restart()
+        root.framePresented = true
       }
     }
   }
-  Timer { id: coverTimer; interval: 250; onTriggered: root.coverSettled = root.shown }
   Timer { id: toastTimer; interval: 6500; onTriggered: root.message = "" }
-  // No hidden/background capture, even if the old keepCache preference is set.
-  // The confirmed last-output crash came from the resident Overview client.
+  // No hidden/background capture. Cached PNGs never retain a capture session.
   Timer {
     id: captureSettle
     interval: 1000
-    onTriggered: root.captureTopologyReady = root.previewScreens.length > 0
+    onTriggered: {
+      root.captureTopologyReady = root.previewScreens.length > 0
+      if (root.opening) root.beginSnapshot()
+    }
   }
   FileView {
     path: root.stateHome + "/omarchy/current/background"
@@ -461,19 +445,25 @@ ShellRoot {
     target: "overview"
     function openOverview(): void { root.openOverview("") }
     function toggle(mode: string): void {
-      if (root.shown) root.closeOverview()
+      if (root.shown || root.opening) root.closeOverview()
       else root.openOverview(mode)
     }
     function shutdown(): void { root.shutdownRequested = true; root.closeOverview() }
     function captureReady(address: string): bool {
       const source = root.captureFor(address.replace(/^0x/, ""))
-      return !!source && source.fresh
+      return !!source && source.hasContent
     }
     function close(): void { root.closeOverview() }
+    function togglePreview(): bool {
+      if (!root.shown || root.settingsShown) return false
+      const before = root.previewAddress
+      root.togglePreview()
+      return before !== root.previewAddress
+    }
     function showSettings(): void { if (root.shown) root.showSettings() }
     function navigateDesktop(direction: string): string {
       if (!root.shown) {
-        if (!bridge.ready || root.busy || activateTimer.running) return "hidden"
+        if (root.opening || !bridge.ready || root.busy || activateTimer.running) return "hidden"
         root.runAction(["step", direction])
         return "ok"
       }
@@ -484,8 +474,13 @@ ShellRoot {
       const cards = []
       for (const w of root.windows) {
         const source = root.captureFor(w.address)
-        cards.push({ address: w.address, thumbnail: !!source && source.hasContent,
-          fresh: !!source && source.fresh, generation: source ? source.generation : 0,
+        let imageReady = false
+        for (let i = 0; i < windowRepeater.count; i++) {
+          const item = windowRepeater.itemAt(i)
+          if (item && item.modelData.address === w.address) { imageReady = item.hasThumbnail; break }
+        }
+        cards.push({ address: w.address, thumbnail: !!source && source.hasContent, imageReady: imageReady,
+          partial: !!source && source.partial, fresh: !!source && source.fresh, generation: source ? source.generation : 0,
           capturedAt: source ? source.capturedAt : 0 })
       }
       return JSON.stringify({ visible: root.shown, busy: root.busy, desktop: root.filterWorkspace, appFilter: root.appFilter,
@@ -493,13 +488,15 @@ ShellRoot {
         desktopLabels: root.workspaceIds.map(root.desktopLabel), windows: cards, dragging: input.dragging, message: root.message,
         query: root.query, selectedAddress: root.selectedAddress, previewAddress: root.previewAddress,
         settingsShown: root.settingsShown, settings: preferences.values, settingsError: preferences.error,
-        liveAddresses: captureBank.live ? captureBank.liveAddresses : [], delegateCount: windowRepeater.count,
+        liveAddresses: [], delegateCount: windowRepeater.count,
         cachedFrames: Object.values(captureBank.entries).filter(e => e && e.hasFrame).length,
         windowCaptureEnabled: root.windowCaptureEnabled,
         captureTopologyReady: root.captureTopologyReady,
-        captureViews: Object.values(captureBank.entries).filter(e => e && (e.front || e.pending)).length,
+        captureViews: 0, captureBackend: "output-snapshot", opening: root.opening,
+        snapshotBytes: captureBank.retainedBytes, snapshotPixels: captureBank.retainedPixels,
+        snapshotError: root.snapshotError,
         accent: String(root.accent), composing: search.input.inputMethodComposing, searchFocused: search.input.activeFocus,
-        preparing: root.preparing, primed: Object.keys(previews.attempted), openCount: root.openCount,
+        preparing: root.preparing, primed: [], openCount: root.openCount,
         firstFrameMs: root.firstFrameMs, workerPid: bridge.processId, workerRestarts: bridge.restarts,
         completedRequests: bridge.completedCount, lastActionMs: bridge.lastElapsedMs,
         layout: { x: stage.x, y: stage.y, width: stage.width, height: stage.height, rects: root.placements },
@@ -528,18 +525,12 @@ ShellRoot {
     Item {
       id: content
       anchors.fill: parent; focus: true
-      CaptureBank {
+      SnapshotBank {
         id: captureBank
-        model: Hyprland.toplevels; live: root.windowCaptureEnabled && root.shown && root.captureTopologyReady
-        liveAddresses: Logic.liveAddresses(root.previewAddress ? [] : root.windows,
-          [root.previewAddress, root.dragSource ? root.dragSource.address : "", root.windows[root.selected] ? root.windows[root.selected].address : ""],
-          preferences.values.liveLimit)
-        factory: Component {
-          CaptureProducer {
-            live: captureEnabled && captureBank.wantsLive(modelData.address)
-            captureEnabled: root.windowCaptureEnabled && Logic.canCapture(root.shown, root.captureTopologyReady, modelData, root.previewScreens)
-          }
-        }
+        model: Hyprland.toplevels
+        shown: root.shown
+        keepCache: preferences.values.keepCache
+        openedAt: root.openedAt
       }
       Keys.onPressed: event => root.handleKey(event, search.input.activeFocus)
 
@@ -606,7 +597,7 @@ ShellRoot {
         accent: root.accent; surfaceColor: root.surfaceColor; textColor: root.textColor
         enabled: !root.busy && !input.dragging && !root.settingsShown && !root.previewAddress
         onKeyPressed: event => root.handleKey(event, true)
-        onEdited: { root.previewAddress = ""; root.keyboardSelection = true; previews.cancel() }
+        onEdited: { root.previewAddress = ""; root.keyboardSelection = true }
       }
       Item {
         id: stage
@@ -665,7 +656,7 @@ ShellRoot {
       Text {
         z: 2
         anchors { left: parent.left; bottom: parent.bottom; leftMargin: 24; bottomMargin: 22 }
-        text: root.windows.length + (root.query ? " matches" : " windows") + "  ·  Space to preview  ·  Ctrl+F to search"
+        text: root.windows.length + (root.query ? " matches" : " windows") + "  ·  Snapshots, not live  ·  Space to preview  ·  Ctrl+F to search"
         color: "white"; opacity: .6; font.pixelSize: 11
       }
       Rectangle {
@@ -719,7 +710,6 @@ ShellRoot {
         onDraggingChanged: if (!dragging) Qt.callLater(root.restoreSearchFocus)
         onStartedDrag: (z, x, y) => {
           if (root.busy) { input.cancelDrag(); return }
-          previews.cancel()
           root.dragSource = z; root.dragPoint = Qt.point(x, y)
           root.keyboardSelection = false
         }

@@ -13,7 +13,6 @@ Item {
   property real lastElapsedMs: 0
   readonly property var processId: worker.processId
   signal completed(int ticket, var result)
-  signal frameNeeded(int ticket, string address)
 
   function send(packet) { worker.write(JSON.stringify(packet) + "\n") }
   function request(args, cover, monitor) {
@@ -23,14 +22,11 @@ Item {
     send({ type: "request", id: id, args: args, cover: cover || {}, monitor: monitor || "" })
     return id
   }
-  function cancel(id) { if (ready && pending[id]) send({ type: "cancel", id: id }) }
-  function frameReady(id) { if (ready && pending[id] === "prime") send({ type: "frame", id: id }) }
   function receive(text) {
     let packet
     try { packet = JSON.parse(text) } catch (error) { console.warn("Invalid worker reply"); return }
     if (packet.event === "ready" && packet.protocol === 1) { ready = true; return }
     if (!pending[packet.id]) return  // late/duplicate replies cannot affect a new request
-    if (packet.event === "frame-needed") { frameNeeded(packet.id, packet.address); return }
     const next = Object.assign({}, pending); delete next[packet.id]; pending = next
     completedCount++; lastElapsedMs = packet.elapsedMs || 0
     completed(packet.id, packet)

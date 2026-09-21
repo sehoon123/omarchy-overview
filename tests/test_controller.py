@@ -46,7 +46,7 @@ class ControllerTests(unittest.TestCase):
             self.assertEqual(c.act(['state'])['order'], [1, 2])
             save.assert_not_called()
 
-    def test_prime_cannot_be_invoked_without_resident_lease(self):
+    def test_retired_viewport_priming_cannot_be_invoked(self):
         with patch.object(c, 'read_order', return_value=[1]):
             with self.assertRaises(ValueError): c.act(['prime', 'abc'])
 

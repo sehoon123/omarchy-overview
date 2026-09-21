@@ -73,13 +73,10 @@ FocusScope {
           enabled: panel.store.writable
           onToggled: panel.store.set("monitorOnly", checked)
         }
-        Controls.Label { text: "Live preview budget"; font.bold: true; Layout.topMargin: 8 }
-        Controls.ComboBox {
-          Layout.fillWidth: true
-          model: ["Selected window only", "Balanced · up to 6 windows", "Live · up to 12 windows"]
-          currentIndex: [1, 6, 12].indexOf(panel.store.values.liveLimit)
-          enabled: panel.store.writable
-          onActivated: index => panel.store.set("liveLimit", [1, 6, 12][index])
+        Controls.Label { text: "Output snapshots"; font.bold: true; Layout.topMargin: 8 }
+        Controls.Label {
+          Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: 12; opacity: .7
+          text: "Visible window regions are captured once before opening. These are not live previews. Covered/off-screen windows show their last matching snapshot or a titled card. No window capture or automatic desktop scrolling."
         }
         Controls.CheckBox {
           text: "Keep previews in memory when closed"; checked: panel.store.values.keepCache
@@ -88,7 +85,7 @@ FocusScope {
         }
         Controls.Label {
           Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: 12; opacity: .7
-          text: "Memory cache makes reopening faster. Turn it off to release window images when closed. No preview images are saved to disk."
+          text: "Keep previous snapshots for off-screen windows. Turn this off to release them when closed. No background capture or image files; the encoded cache is bounded to 8 MiB."
         }
         Controls.Label {
           Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: 12; opacity: .8

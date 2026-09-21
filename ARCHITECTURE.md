@@ -1,151 +1,112 @@
-# Overview architecture
+# Architecture
 
-> **2026-09-21 safety hold:** the capture pipeline below is gated off by
-> `windowCaptureEnabled: false`. Hidden sampling has also been removed and
-> producers release their captures while hidden. The old retention preference
-> cannot bypass these guards. See [the compositor fix](integrations/hyprland/README.md)
-> for the root-cause patch and verification limits. Navigation remains active.
+## Scope
+
+This is a standalone Overview, not a Hyprland patch or Omarchy Shell extension.
+Only Overview's repository and deployed application are changed. Compositor
+packages, monitor configuration, remote desktop, and unrelated services are not
+part of the preview fix. The former custom compositor integration is withdrawn.
 
 ## Ownership
 
-```
-Shortcut -> existing Quickshell IPC -> shell.qml (view + user intentions)
-                                  |
-                                  +-> BackendClient -> stdin/stdout -> worker.py
-                                  |                    one executor + input reader
-                                  |                    -> controller.py / preview.py
-                                  |                    -> Hyprland local UNIX socket
-                                  |
-                                  +-> PreviewScheduler (lower-priority viewport lease)
-                                  |       ^ fresh-frame events / cancellation
-                                  |
-                                  +-> CaptureBank (stable window-address registry)
-                                          -> CaptureProducer (Wayland adapter)
-                                          -> FrameCache (front + pending snapshot)
-```
+| Component | Responsibility |
+| --- | --- |
+| `shell.qml` | Visibility, selection, topology cancellation, input routing, IPC |
+| `OverviewLogic.js` | Pure search, desktop projection, focus/selection helpers |
+| `Layout.js` | Aspect-preserving rows and spatial navigation |
+| `SnapshotClient.qml` | Short-lived Quickshell process adapter |
+| `SnapshotRequest.qml` | Qt-only request, deadline, cancellation state machine |
+| `snapshot.py` | Read-only scene validation, output screenshot, PNG window crops |
+| `SnapshotBank.qml` | Bounded memory-only cache, identity validation, pruning |
+| `WindowPreview.qml`, `DesktopPreview.qml` | Snapshot/title cards and desktop thumbnails |
+| `BackendClient.qml`, `worker.py`, `controller.py` | Serialized explicit desktop actions |
+| `workspaces.py` | Stable workspace selectors and per-monitor slot projection |
+| `Preferences.qml`, `PreferenceStore.qml`, `SettingsPanel.qml` | Validated local settings |
 
-There is one systemd user service, not a collection of microservices. Its child
-worker exposes no listening socket or network port. QML already subscribes to
-Hyprland's live model; authoritative transaction checks use direct socket queries
-rather than starting hyprctl, Python and quickshell IPC clients for each poll.
-The CLI controller remains a fallback for startup/busy desktop navigation.
+The older generic `CaptureBank.qml`/`FrameCache.qml` utilities and their isolated
+regressions remain for compatibility. They are **not instantiated by the shell**.
+The native `CaptureProducer`, viewport `PreviewScheduler`, Python priming helper,
+and resident-worker `prime` protocol have been removed. There is no native
+`ScreencopyView` in the application.
 
-## Freshness is not `hasContent`
+## Opening and capture flow
 
-Quickshell's native `ScreencopyView.hasContent` only establishes that a buffer
-exists. It does not establish that it depicts the current Chromium tab, nor does
-it identify a newly completed request. Using that boolean as a cache-validity or
-capture-completion signal caused the stale-tab bug.
+1. Select the output and initial window from subscribed metadata. Keep the panel
+   unmapped. A cold start may wait for the bounded topology-settle timer.
+2. Launch a separate read-only Python helper. It queries `monitors`, `clients`, and
+   `layers`; verifies lock state, usable output, active workspace, geometry, and
+   occlusion; and rejects an already-visible Overview or an Omarchy authentication
+   dialog on any output.
+3. Use `grim -o <output> -s <scale> -t ppm -`. **Never use toplevel export (`-T`).**
+   Read bounded stdout with a deadline and terminate/reap the helper's child on
+   cancellation, failure, or timeout. No images are written to disk.
+4. Re-read scene metadata. If lock state or relevant geometry/identity/occlusion
+   changed, discard the pixels. Otherwise crop visible regions and encode PNG
+   data URLs with Python's standard library.
+5. The bank accepts only images matching the current window identity, title, and
+   dimensions. Then map the panel. A regular failure shows existing snapshots or
+   title cards with a brief message; explicit lock/authentication/output-blocked results cancel
+   opening instead.
+6. Quick Look and the desktop strip use those same images. Nothing captures in
+   the background or while the Overview panel is shown.
 
-`FrameCache` instead owns:
+A panel already on screen must never capture itself. A late process completion
+must never reopen a cancelled panel. Cancellation marks the request invalid
+before terminating the process; another request cannot start until the old
+process exits. The frontend deadline is 700 ms, independent of the serialized
+desktop-action worker. The helper has its own bounded reads and child cleanup.
 
-- `contentTag`: current window title + dimensions; changed tags invalidate display.
-- `confirmedTag`: the tag attached to the committed snapshot.
-- `generation`: increases only when a pending capture supplies its first frame.
-- `capturedAt`: time of that acknowledged snapshot (not of arbitrary live updates).
-- `needsRefresh`: an explicitly invalidated frame, including focus-boundary refresh.
-- `front` / `pending`: separate sources; no empty-frame flicker during normal refresh.
+## Snapshot limits and correctness
 
-A changed tag is debounced for at least 80 ms so an application can commit its
-repaint after a title notification. An old-tag capture completing late is rejected.
-A new tag never inherits the old frame's validity. Window/source destruction clears
-the cache, even if a compositor address is subsequently reused.
+- Output images are downsampled, with raw PPM input bounded to 1.8 million pixels.
+- A reply contains at most 24 frames, 1.8 million cropped pixels, and 6 MiB of
+  encoded image data. The bank retains at most 128 entries, 8 MiB encoded data,
+  and 12 million image pixels. Qt may keep multiple decoded textures; Python
+  buffers and Qt overhead are additional memory.
+- The cache is RAM-only. Images are not persisted or logged. `Image.cache` is
+  disabled; dropping a source does not intentionally populate Qt's global image
+  cache. `keepCache=false` clears on hide.
+- Closed windows are pruned; monitor topology changes clear images. Lookup checks
+  address, PID, stable ID, title, and original window dimensions.
+- Snapshot badges distinguish older retained frames and partial visible regions.
+  A snapshot always has `fresh=false`; same-title content changes are not live.
+- Overlap handling is conservative. Floating/stacked windows and layers can cause
+  a lower window to be omitted rather than showing another application's pixels
+  as its preview. Hidden/offscreen windows have no new full-window image.
+- Real snapshot aspect ratios are preserved. Without an image, IPC ratios are
+  clamped to a readable range and title/app labels remain visible.
 
-While hidden, only the naturally activated window is sampled (400 ms), plus
-metadata/focus-boundary events. No background operation scrolls or focuses windows.
-While visible, the budget is 6 main/drag streams by default (selectable 1/6/12);
-desktop-strip-only windows keep snapshots. Quick Look shares and prioritizes one
-existing capture. Pending captures expire after 1.5 seconds. Images are RAM/GPU-only.
-`captureEnabled = false` destroys front and pending captures and gates every
-refresh entry point, so disabling hidden retention cannot silently refill buffers.
-The Qt process and graphics resource pools can still retain memory.
+Metadata checks are not an atomic compositor transaction. They reduce mismatched
+crops but cannot prove that an arbitrary mid-frame scene transition is impossible.
+Output screenshots avoid the known missing-monitor *window-session* path; they do
+not repair the compositor or prove every physical output-removal scenario safe.
 
-**Limit:** title/size changes are observable, arbitrary off-screen application
-pixel changes are not. `fresh` means the last acknowledged capture satisfies known
-invalidations, not a universal content-version guarantee. Background content-only
-updates can lag the sampling period; inaccessible/protected captures stay as
-placeholders. This does not claim macOS WindowServer-level capture parity.
+## Desktop actions remain explicit
 
-## Viewport lease and action priority
+Window activation uses the Wayland activation path at a cold start and the
+address-targeted Hyprland dispatcher when metadata is ready. User-requested move,
+create, reorder, group, remove, and undo actions use the resident Python worker
+and its serial action lock. Mutating requests are not replayed after worker loss.
+Preview capture never invokes these actions and never scrolls a viewport.
 
-Hyprland 0.56 skips fully off-screen scrolling columns. `PreviewScheduler` may
-request one covered recovery, but only after the overlay's first Qt frame and a
-short compositor-fade settling period. It never uses the foreground action's
-`busy` state. A click or drag cancels that lower-priority request.
+Workspace identity is a positive numeric selector or `name:<name>`, not a named
+workspace's temporary negative ID. Removal moves windows rather than closing
+applications. Undo skips windows changed by later user actions. Read-only state
+queries do not rewrite saved desktop order.
 
-The scheduler also requires the panel's actual screen to equal the focused monitor;
-otherwise it cancels and cannot start a lease on an uncovered display.
-The worker validates the active desktop/monitor, saves reference positions, scrolls
-the covered viewport, and emits `frame-needed`. QML requests a new generation;
-only its completion acknowledges the worker. No polling of a pre-existing buffer.
-The frame wait is at most 750 ms. `finally` restores the **measured** offset and
-waits for its return animation before releasing the lease or running queued input.
-It refuses other monitors, other desktops, floating windows and untested directions.
+## Validation boundaries
 
-The stdin reader stays responsive to cancellation while the executor waits. EOF /
-graceful SIGTERM cancels the wait and allows cleanup. Forced process destruction,
-compositor failure or external workspace changes can interrupt best-effort recovery;
-there is no claim of transactional protection against SIGKILL.
+`./validate` parses QML, tests pure JS layout/search, runs mocked Python controller
+and snapshot tests, and runs offscreen/software Qt tests. It covers actual PNG
+decoding, cropped-pixel correctness, lock/scene invalidation, cache bounds and
+identity, cancellation, timeout, late responses, input, settings, and layout.
 
-## Request protocol and persistence
+`tests/verify_output_snapshots.py --run` is opt-in. It starts an isolated staging
+copy, checks decoded visible snapshots, Quick Look, settings, zero native capture
+views, and no background captures, then verifies unchanged user-window geometry,
+desktop assignments, focus, and compositor version. It does not create/move user
+windows, change settings, save screenshots, restart Hyprland, or remove outputs.
 
-- Newline-delimited JSON on inherited pipes, protocol version 1.
-- Monotonic request IDs; one in-flight transaction; duplicate/stale replies ignored.
-- In-flight duplicates do not emit a premature completion for the original request.
-- Frame and cancellation events carry that same request ID.
-- Bounded packets, compositor replies, socket deadlines and state-lock waits.
-- Worker failure fails the pending operation, backs off, and never replays a mutation.
-- Existing address validation, workspace restrictions, confirmation and Undo remain.
-- CLI and worker share the same transaction lock; desktop state is written only if
-  its order changes. Capture and state queries never rewrite that JSON file.
-
-## View model, search and settings
-
-Main window delegates use the native stable toplevel model, not a newly filtered
-JS array. Each maps its address to a filtered layout index; only in-layout cards
-participate in hit testing. Search/scope changes do not destroy cards or captures.
-Selection is address-stable across metadata updates and reorder. Packing, window
-cards and desktop miniatures share `Layout.aspectFor`: captured dimensions first,
-IPC dimensions only until a frame is available. Mixing those sources left holes
-when IPC sizes lagged a resize. Valid portrait/ultrawide ratios are not clamped.
-An aspect-ratio string separates geometry dependencies from title/focus updates.
-
-The always-focused search TextInput handles Unicode/IME composition natively. The
-shared key handler yields composition keys and briefly guards forwarded commit
-keys. Search text keeps native caret/edit behavior; arrows/Tab otherwise navigate
-cards. Modal settings/Quick Look block the drag surface. Focus returns to search
-after transactions, drag cancellation and modal dismissal.
-
-`Preferences.qml` is a Qt-only, tested settings state machine. Its FileView adapter
-writes only the Overview's own versioned JSON using atomic replacement, with one
-in-flight write and a coalesced pending patch. It waits for the actual saved signal,
-preserves unknown keys, refuses malformed/newer files and reports write failures
-without silent replay. Reloads wait until pending writes drain. Shutdown flushes
-settings before quitting. Concurrent external edits are last-writer-wins, not a
-multi-process transactional editor.
-
-Palette integration reads three public scalar tokens from current `colors.toml`.
-It does not depend on private Omarchy Shell APIs, start another helper, or mutate
-compositor blur. The existing separate service/worker remain for fault isolation;
-this revision is not an in-process Omarchy plugin migration.
-
-## Verification and observability
-
-Unit coverage includes stale-tab rejection, late frames, double buffering, source
-replacement, cancellation/lease lifetime, late replies, protocol duplicates,
-fragmented socket replies and measured-offset recovery on success/cancel/error.
-
-A real disposable-window test changed green Tab A to blue Tab B, focused a distant
-scrolling column, observed the old cache become invalid, then verified blue pixels
-in Overview. The new generation was acknowledged and the viewport restored. User
-windows were not closed or moved between desktops.
-
-`overview status` exposes worker PID/restarts, completed requests, last transaction
-time, per-window generations/freshness/timestamps, query/selection/Quick Look,
-settings, delegate/retained-frame counts, live priorities, target layout rectangles
-and actual hit-test surfaces, and `firstFrameMs`. Qt's first
-rendered frame is separate from IPC availability and compositor presentation.
-`tests/benchmark_open.py` does not claim to measure photons reaching the display.
-
-Restart `sehun-overview.service` after code edits. Before reverting to the older
-non-resident version, disable/stop the service as described in README.md.
+Historical native-capture experiments/full-window benchmarks do not define the
+snapshot backend's acceptance criteria. Neither offline tests nor the normal
+output-snapshot UI check establish real hotplug crash immunity.

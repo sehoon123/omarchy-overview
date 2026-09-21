@@ -2,6 +2,8 @@
 /settings.json
 /settings.test-tmp
 /test-state/
+/.overview-smoke-*/
+/.deployment-backup-*/
 /.env
 /.env.*
 /.venv/

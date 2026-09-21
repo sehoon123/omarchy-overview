@@ -143,7 +143,7 @@ def act(args, monitor=''):
     if action == 'state':
         pass
     elif action == 'prime':
-        raise ValueError('Preview capture requires the resident worker and a viewport lease')
+        raise ValueError('Viewport priming is retired; output snapshots never move desktops')
     elif action == 'create':
         target = next_desktop(order, prefix)
         order.append(target)

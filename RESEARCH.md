@@ -1,5 +1,10 @@
 # Mission Control interaction research
 
+> Historical design notes. The native capture, background sampling, and viewport
+> priming described below have been removed. They are not current instructions
+> or safety guarantees. The supported implementation uses output-only snapshots;
+> see README.md and ARCHITECTURE.md. Do not restore the withdrawn compositor patch.
+
 Reviewed Apple’s current Mac User Guide and the installed Hyprland 0.56.2 API
 before implementation. This is an approximation, not an assertion of macOS parity.
 
@@ -49,7 +54,7 @@ slots. See README.md for keyboard tradeoffs, persistence, and remaining limitati
   transient `exec_cmd` workspace rule for the disposable verification window.
 - Installed Lua definitions: `/usr/share/hypr/stubs/hl.meta.lua`.
 
-## Off-screen capture correction
+## Historical off-screen capture attempt (retired)
 
 Hyprland 0.56.2's `CScreenshareManager::onOutputCommit` skips a window whose
 current geometry has no intersection with its monitor. This explains blank
@@ -66,7 +71,7 @@ unchanged client positions and unchanged workspace membership after recovery.
 The desktop strip also reserves 16 px at both ends for the outlines and close
 buttons drawn outside the thumbnail bounds; hit testing respects the same clip.
 
-## Resident warm path
+## Historical resident/native-capture path (retired)
 
 The initial design deliberately exited on close. Profiling showed this discarded
 all captured frames and repeated both GUI setup and covered-viewport priming.

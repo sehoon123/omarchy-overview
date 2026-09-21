@@ -36,6 +36,11 @@ assert.equal(aspectFor(window, { sourceSize: { width: 0, height: 1000 } }), 1.6)
 assert.equal(aspectFor(window, { sourceSize: { width: Infinity, height: 1000 } }), 1.6);
 assert.equal(aspectFor({}, null), 1.6);
 assert.equal(aspectFor({ lastIpcObject: { size: [-100, 100] } }, null), 1.6);
+// Missing images must not turn window cards into unreadable thin strips.
+assert.equal(aspectFor({ lastIpcObject: { size: [20, 1000] } }, null), .7);
+assert.equal(aspectFor({ lastIpcObject: { size: [8000, 100] } }, null), 2.4);
+// Actual captured content is still aspect-preserving, including portrait crops.
+assert.equal(aspectFor(window, { sourceSize: { width: 100, height: 1000 } }), .1);
 assert.deepEqual(arrange([1], NaN, 100), []);
 for (const compact of [false, true]) {
   for (const ratios of [[.8, .95, 1.1], [.1, 1, 8], [.005, .8, 20]]) {

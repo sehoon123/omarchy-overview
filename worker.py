@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """One resident stdin/stdout worker. No listening socket, polling CLI or replay.
 
-The reader stays responsive to frame/cancel messages while the executor owns
-one serialized transaction. Only preview work is cooperatively cancellable.
+One serialized desktop transaction at a time. Preview capture is a separate,
+read-only output helper; this worker never scrolls desktops to obtain previews.
 """
 import fcntl
 import json
@@ -13,27 +13,18 @@ import threading
 import time
 
 import controller
-import preview
 
 MAX_PACKET = 1024 * 1024
 ARITY = {'state': 1, 'create': 1, 'move': 3, 'switch': 2, 'step': 2,
-         'reorder': 3, 'remove': 2, 'undo': 2, 'prime': 2}
+         'reorder': 3, 'remove': 2, 'undo': 2}
 
 
 class Gate:
-    def __init__(self, ident, emit):
-        self.ident, self.emit = ident, emit
+    def __init__(self):
         self.cancelled = threading.Event()
-        self.frame = threading.Event()
 
     def cancel(self):
         self.cancelled.set()
-        self.frame.set()
-
-    def wait_for_frame(self, addr, timeout):
-        if self.cancelled.is_set(): return False
-        self.emit({'event': 'frame-needed', 'id': self.ident, 'address': addr})
-        return self.frame.wait(timeout) and not self.cancelled.is_set()
 
 
 class Worker:
@@ -54,11 +45,6 @@ class Worker:
         if type(ident) is not int or not 0 < ident < 2147483647: raise ValueError('Invalid request id')
         kind = packet.get('type', 'request')
         with self.lock:
-            if kind in ('frame', 'cancel'):
-                if self.active and self.active[0]['id'] == ident and self.active[0]['args'][0] == 'prime':
-                    if kind == 'cancel': self.active[1].cancel()
-                    else: self.active[1].frame.set()
-                return
             # An in-flight duplicate must not emit an early terminal reply for
             # the original operation. Its one real completion is still pending.
             if kind == 'request' and self.active and self.active[0]['id'] == ident: return
@@ -71,7 +57,7 @@ class Worker:
             if not isinstance(packet.get('cover', {}), dict): raise ValueError('Invalid viewport lease')
             if not isinstance(packet.get('monitor', ''), str): raise ValueError('Invalid monitor')
             self.last_id = ident
-            job = (packet, Gate(ident, self.emit))
+            job = (packet, Gate())
             self.active = job
             self.jobs.put_nowait(job)
 
@@ -86,10 +72,8 @@ class Worker:
                     fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
                     break
                 except BlockingIOError:
-                    if gate.cancelled.wait(.025): return {'ok': True, 'primed': False}
+                    if gate.cancelled.wait(.025): return {'ok': False, 'error': 'Overview is stopping'}
                     if time.monotonic() >= lock_deadline: raise RuntimeError('Another desktop action is still running')
-            if packet['args'][0] == 'prime':
-                return {'ok': True, 'primed': preview.prime(controller, packet['args'][1], packet.get('cover', {}), gate)}
             return controller.act(packet['args'], packet.get('monitor', ''))
 
     def run(self):

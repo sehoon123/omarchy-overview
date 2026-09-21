@@ -38,10 +38,14 @@ Item {
     if (!active || !factory) { clear(); return }
     const next = {}
     for (const window of windows) {
-      if (!addresses.includes(window.address) || next[window.address]) continue
+      if (next[window.address]) continue
       const old = entries[window.address]
       // Address reuse is not identity continuity. Never inherit another source.
-      const entry = old && old.modelData === window ? old : allowNew
+      const keep = !!old && old.modelData === window
+      // While new sources are forbidden (closing), a capture-plan change must
+      // not release a producer this bank is not allowed to recreate.
+      if (!addresses.includes(window.address) && !(keep && !allowNew)) continue
+      const entry = keep ? old : allowNew
         ? factory.createObject(bank, { modelData: window, serial: ++nextSerial }) : null
       if (entry) next[window.address] = entry
     }

@@ -44,11 +44,19 @@ QtObject {
   }
   function saved() {
     if (!inFlight) return
-    document = inFlight; inFlight = null; error = ""
+    // A completed write proves the file is writable, which re-enables the panel
+    // after an earlier failure.
+    document = inFlight; inFlight = null; writable = true; error = ""
     Qt.callLater(flush)
   }
   function failed(message) {
     inFlight = null; pending = ({}); debounce.stop()
+    // A file that reads but cannot be written (read-only file or filesystem,
+    // wrong owner) keeps `writable` true today, so every later edit snaps back
+    // with the same toast and no explanation (AUDIT.md F-62). Demoting it makes
+    // SettingsPanel disable its controls; the next successful load()/saved()
+    // re-enables them.
+    writable = false
     error = message // Restore the last confirmed values; never silently retry.
   }
 }

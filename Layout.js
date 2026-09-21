@@ -15,23 +15,46 @@ function aspectFor(window, capture) {
 
 // Start the spread from the window's desktop rectangle when it belongs to this
 // display. Other displays / fully off-screen windows fade in at their grid slot.
+// Hyprland reports logical coordinates, so fractional scale and output rotation
+// need no conversion here. Every argument is optional on purpose: a throw inside
+// this binding would take the whole open animation with it, and shell.qml:223
+// passes placements[i], which is undefined whenever arrange() refuses.
 function animationOrigin(window, output, offset, fallback) {
   const ipc = window && window.lastIpcObject || {}, at = ipc.at || [], size = ipc.size || [];
+  const shift = offset || {};
   if (!output || ipc.monitor !== output.id || at.length !== 2 || size.length !== 2 ||
-      !at.concat(size).every(Number.isFinite) || Math.min(...size) <= 0 ||
+      ![at[0], at[1], size[0], size[1]].every(Number.isFinite) || Math.min(size[0], size[1]) <= 0 ||
       at[0] + size[0] <= output.x || at[0] >= output.x + output.width ||
       at[1] + size[1] <= output.y || at[1] >= output.y + output.height) return fallback;
-  return { x: at[0] - output.x - offset.x, y: at[1] - output.y - offset.y,
+  return { x: at[0] - output.x - (shift.x || 0), y: at[1] - output.y - (shift.y || 0),
     width: size[0], height: size[1] };
 }
 
 // Qt-independent geometry for a compact, aspect-preserving window overview.
 function arrange(aspects, width, height, compact) {
-  if (!aspects.length || !isFinite(width) || !isFinite(height) || width <= 0 || height <= 0) return [];
-  // Clamping valid portrait/ultrawide ratios would leave empty space in the cells.
-  const ratios = aspects.map(a => Number(a) > 0 && isFinite(Number(a)) ? Number(a) : 1.6);
+  // A model that has not arrived yet must refuse, not throw: callers pass
+  // JSON.parse(layoutKey) (shell.qml:104) and members.map(...) (DesktopPreview.qml:19).
+  if (!aspects || !aspects.length || !aspects.map ||
+      !isFinite(width) || !isFinite(height) || width <= 0 || height <= 0) return [];
+  // Clamping valid portrait/ultrawide ratios would leave empty space in the cells,
+  // so the packing bounds sit far outside anything a real window reports and only
+  // catch pathological geometry: all cards share one scale, so a single 64:1 strip
+  // used to shrink every other card (477x298 -> 38x24), and a garbage ratio erased
+  // the grid entirely. Beyond the bounds the cell is packed at the bound while
+  // WindowPreview.qml:24-25 keeps fitting the true image inside it - letterboxed,
+  // never distorted.
+  const ratios = aspects.map(a => Number(a) > 0 && isFinite(Number(a))
+    ? Math.min(20, Math.max(.005, Number(a))) : 1.6);
   const gap = Math.min(compact ? 6 : 44, width / 20, height / 20);
   const labelSpace = compact ? 0 : 34;
+  // Cards below this cannot be seen or hit, and a stage shorter than the label
+  // space used to pack a literal 1-pixel card. Unlabelled strip tiles stay useful
+  // much smaller, so they refuse far later. [] is the single refusal answer: never
+  // a sliver, never an off-stage or overlapping card. The count that trips it
+  // depends on the ratios and the stage, so it is not a constant: measured with
+  // uniform 1.6 ratios, the 132x68 compact strip packs 1..117 and refuses from
+  // 118, and a 1504x730 labelled stage packs 1..279 and refuses from 280.
+  const minCell = compact ? 4 : 8;
   let best = null;
   for (let rows = 1; rows <= ratios.length; rows++) {
     const available = (height - gap * (rows - 1)) / rows - labelSpace;
@@ -50,7 +73,7 @@ function arrange(aspects, width, height, compact) {
     const score = h * h; // All windows share the scale; maximize visible area.
     if (!best || score > best.score) best = { score: score, h: h, groups: groups };
   }
-  if (!best) return [];
+  if (!best || best.h < minCell) return [];
   const totalHeight = best.groups.length * (best.h + labelSpace) + gap * (best.groups.length - 1);
   const result = [];
   best.groups.forEach((group, row) => {
@@ -67,14 +90,17 @@ function arrange(aspects, width, height, compact) {
 }
 
 function neighbor(rects, index, direction) {
-  if (!rects.length) return 0;
-  const current = rects[index] || rects[0];
+  if (!rects || !rects.length) return 0;
+  // A selection from outside the grid (stale index, refused layout) must never be
+  // handed back: the caller uses the result to index windows and placements.
+  const from = index >= 0 && index < rects.length ? Math.floor(index) : 0;
+  const current = rects[from];
   const cx = current.x + current.width / 2;
   const cy = current.y + current.height / 2;
-  let best = index;
+  let best = from;
   let score = Infinity;
   rects.forEach((r, i) => {
-    if (i === index) return;
+    if (i === from) return;
     const dx = r.x + r.width / 2 - cx;
     const dy = r.y + r.height / 2 - cy;
     const along = direction === "left" ? -dx : direction === "right" ? dx : direction === "up" ? -dy : dy;

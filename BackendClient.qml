@@ -1,54 +1,31 @@
 import QtQuick
 import Quickshell.Io
 
-// One resident child, request IDs and framed replies; never replay mutations.
-Item {
+// Process adapter for BackendProtocol: one resident child, framed replies, never a
+// replayed mutation. It holds no protocol state.
+//
+// tests/ must NEVER instantiate this component. It roots a Process that runs
+// worker.py, and a request such as ["move", ...] or ["step", ...] reaches
+// `hyprctl dispatch` through controller.py. The offline tests drive
+// BackendProtocol directly (tests/tst_BackendClient.qml); autoStart is the
+// additive belt-and-braces gate that keeps even an accidental instantiation from
+// starting a process.
+BackendProtocol {
   id: client
   required property string workerPath
-  property bool ready: false
-  property int sequence: 0
-  property var pending: ({})
-  property int restarts: 0
-  property int completedCount: 0
-  property real lastElapsedMs: 0
   readonly property var processId: worker.processId
-  signal completed(int ticket, var result)
-
-  function send(packet) { worker.write(JSON.stringify(packet) + "\n") }
-  function request(args, cover, monitor) {
-    if (!ready || Object.keys(pending).length) return 0
-    const id = ++sequence
-    pending = Object.assign({}, pending, { [id]: args[0] })
-    send({ type: "request", id: id, args: args, cover: cover || {}, monitor: monitor || "" })
-    return id
-  }
-  function receive(text) {
-    let packet
-    try { packet = JSON.parse(text) } catch (error) { console.warn("Invalid worker reply"); return }
-    if (packet.event === "ready" && packet.protocol === 1) { ready = true; return }
-    if (!pending[packet.id]) return  // late/duplicate replies cannot affect a new request
-    const next = Object.assign({}, pending); delete next[packet.id]; pending = next
-    completedCount++; lastElapsedMs = packet.elapsedMs || 0
-    completed(packet.id, packet)
-  }
+  onWriteRequested: text => worker.write(text)
+  // The only restart path, gated so autoStart: false starts no process at all,
+  // including after a worker loss.
+  onStartRequested: if (client.autoStart) worker.running = true
   Process {
     id: worker
     command: ["python3", "-u", client.workerPath]
     stdinEnabled: true
     stdout: SplitParser { onRead: data => client.receive(data) }
     stderr: SplitParser { onRead: data => console.warn("Overview worker:", data) }
-    onExited: {
-      client.ready = false
-      const lost = client.pending; client.pending = ({})
-      for (const id in lost) client.completed(Number(id), { ok: false, error: "Overview worker stopped; action was not replayed" })
-      client.restarts++
-      if (client.restarts <= 5) restartTimer.restart()
-    }
+    onExited: client.processExited()
   }
-  Timer {
-    id: restartTimer
-    interval: Math.min(5000, 250 * Math.pow(2, client.restarts))
-    onTriggered: worker.running = true
-  }
-  Component.onCompleted: worker.running = true
+  // The default autoStart is true, so the shell's resident worker still starts here.
+  Component.onCompleted: if (client.autoStart) worker.running = true
 }

@@ -3,6 +3,14 @@
 
 One serialized desktop transaction at a time. Preview capture is a separate,
 read-only output helper; this worker never scrolls desktops to obtain previews.
+
+Every protocol error is answered, never fatal: an oversized packet is refused
+politely and the rest of that line is drained instead of being parsed as a new
+request (AUDIT F-37), a retransmission that changes its arguments is refused
+instead of being swallowed (F-38), and a transaction that returns something
+unusable, raises, or cannot be emitted still ends with exactly one reply, a
+cleared slot and a live thread (F-36). `close()` is bounded and idempotent
+(F-39); mutating requests are never replayed.
 """
 import fcntl
 import json
@@ -15,8 +23,18 @@ import time
 import controller
 
 MAX_PACKET = 1024 * 1024
+MAX_MESSAGE = 200
+CLOSE_TIMEOUT = 2
 ARITY = {'state': 1, 'create': 1, 'move': 3, 'switch': 2, 'step': 2,
          'reorder': 3, 'remove': 2, 'undo': 2}
+
+
+def message(error):
+    """One bounded, single-line error string for the protocol and the toast."""
+    text = ' '.join(str(error)[:2 * MAX_MESSAGE].split())
+    if len(str(error)) > 2 * MAX_MESSAGE or len(text) > MAX_MESSAGE:
+        text = text[:MAX_MESSAGE - 1] + '…'
+    return text or 'Overview backend could not complete that request'
 
 
 class Gate:
@@ -47,7 +65,11 @@ class Worker:
         with self.lock:
             # An in-flight duplicate must not emit an early terminal reply for
             # the original operation. Its one real completion is still pending.
-            if kind == 'request' and self.active and self.active[0]['id'] == ident: return
+            # A retransmission that changes the request is not that duplicate:
+            # answer it instead of silently discarding it.
+            if kind == 'request' and self.active and self.active[0]['id'] == ident:
+                if packet.get('args') == self.active[0].get('args'): return
+                raise ValueError('Conflicting retransmission')
             args = packet.get('args')
             if kind != 'request' or not isinstance(args, list) or not args or not all(isinstance(a, str) for a in args):
                 raise ValueError('Invalid command')
@@ -82,18 +104,45 @@ class Worker:
             if job is None: return
             packet, gate = job
             start = time.monotonic()
-            try: result = self.execute(packet, gate)
-            except Exception as error: result = {'ok': False, 'error': str(error), 'replayed': False}
-            result.update(id=packet['id'], elapsedMs=round((time.monotonic() - start) * 1000, 1))
-            with self.lock: self.active = None
-            self.emit(result)
+            result = None
+            try:
+                result = self.execute(packet, gate)
+            except BaseException as error:
+                result = {'ok': False, 'error': message(error), 'replayed': False}
+                # A SystemExit or KeyboardInterrupt still ends this thread, but
+                # only after the reply below and never with `active` left set.
+                if not isinstance(error, Exception): raise
+            finally:
+                # Everything after execute() is inside the guarded region: a
+                # non-dict result or an unserialisable reply must not strand
+                # `active`, kill this thread, or answer with no reply at all.
+                if not isinstance(result, dict):
+                    result = {'ok': False, 'error': 'Overview backend returned an unusable result', 'replayed': False}
+                result.update(id=packet.get('id'), elapsedMs=round((time.monotonic() - start) * 1000, 1))
+                with self.lock: self.active = None
+                try: self.emit(result)
+                except Exception: pass
+            with self.lock:
+                if self.closed: return
 
-    def close(self):
+    def close(self, timeout=CLOSE_TIMEOUT):
+        """Bounded and idempotent. Returns True when the thread actually ended.
+
+        `timeout` is one budget for handing over the sentinel *and* joining, so a
+        transaction that ignores its gate (controller.act has no ceiling of its
+        own) keeps the process alive after this returns instead of silently
+        extending the graceful-stop window.
+        """
+        deadline = time.monotonic() + timeout
         with self.lock:
-            self.closed = True
+            first, self.closed = not self.closed, True
             if self.active: self.active[1].cancel()
-        self.jobs.put(None)
-        self.thread.join()
+        if first:
+            # A blocking put would wait forever on a job nobody will ever run.
+            try: self.jobs.put(None, timeout=max(.001, deadline - time.monotonic()))
+            except queue.Full: pass
+        self.thread.join(max(0, deadline - time.monotonic()))
+        return not self.thread.is_alive()
 
 
 def main():
@@ -108,13 +157,20 @@ def main():
     emit({'event': 'ready', 'protocol': 1})
     try:
         while line := sys.stdin.buffer.readline(MAX_PACKET + 1):
-            if len(line) > MAX_PACKET: raise ValueError('Protocol packet is too large')
             packet = None
             try:
+                if len(line) > MAX_PACKET:
+                    # Drain the rest of the oversized line so its tail is never
+                    # read as a second request, then refuse it like any other.
+                    while not line.endswith(b'\n'):
+                        line = sys.stdin.buffer.readline(MAX_PACKET + 1)
+                        if not line: break
+                    raise ValueError('Protocol packet is too large')
                 packet = json.loads(line)
                 worker.accept(packet)
             except (ValueError, TypeError) as error:
-                emit({'id': packet.get('id', 0) if isinstance(packet, dict) else 0, 'ok': False, 'error': str(error)})
+                emit({'id': packet.get('id', 0) if isinstance(packet, dict) else 0,
+                      'ok': False, 'error': message(error)})
     finally:
         worker.close()
 

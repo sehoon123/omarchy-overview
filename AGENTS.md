@@ -27,3 +27,28 @@
   the Overview's own UI without moving/closing user windows.
 - Validate, describe snapshot limitations honestly, and commit/push only reviewed
   project changes. Never infer that offline tests prove physical hotplug safety.
+
+## Clarifications (additive; no rule above is relaxed)
+
+- During a hardening or review pass the rules above are further narrowed, not
+  widened: work only inside this repository's working tree. Do not write to the
+  deployed copy under ~/.config/omarchy/overview, do not start/stop/restart any
+  service, and leave Git writes (add, commit, push, checkout, stash, reset) to
+  whoever reviews the change. Reading the deployed copy is fine.
+- Never run tests/verify_*.py, the omarchy-overview launcher, worker.py, or
+  controller.py with an action argument as part of routine work: each one either
+  stages a visible UI or performs a real desktop change. `./validate` is the
+  routine check and is fully offline.
+- hyprctl is read-only here: `-j monitors|clients|layers|workspaces|version` only.
+  No dispatch, keyword, reload or eval. Overview's own openOverview/toggle/close
+  IPC calls change visible state, so they are not probes; `status` is.
+- Do not reintroduce anything RESEARCH.md marks as removed: output snapshots or
+  screen crops, covered-viewport scrolling/priming, background capture outside a
+  visible session, cross-session frame caches, double-buffered frames, the
+  resident-worker `prime` protocol, or the withdrawn compositor patch.
+- Do not rename keys in the IPC `status` payload or in settings.json, even the
+  historical ones (`primed`, `cachedFrames`, `keepCache`): the opt-in checks and
+  existing installations read them.
+- Settings open from the **Settings** button in the window grid or the
+  `showSettings` IPC call. There is no settings keyboard shortcut, and there is no
+  drag target that removes a desktop; describe only the bindings that exist.

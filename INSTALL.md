@@ -40,6 +40,11 @@ rm -rf tests/capture-fixture
 systemctl --user start sehun-overview.service
 ```
 
+The five globs above cover every application, test and documentation file in the
+repository root; `.gitignore` and `integrations/` are deliberately not copied (see
+**New installation**). They also copy `Layout.test.js` and `OverviewLogic.test.js`
+into the deployment, which is harmless — nothing loads them at runtime.
+
 Do **not** copy a default `settings.json` over an existing file. Keep the installed
 launcher, keybinding, user service definition, desktop-order state, and other
 Omarchy components unchanged for this update. No logout/relogin is necessary.
@@ -72,24 +77,57 @@ Expected status while **hidden**:
 
 Expected status while **visible**:
 
-- `windowCaptureEnabled`: `true`, `captureViews` between 1 and 32
+- `windowCaptureEnabled`: `true`; `captureViews` between 1 and 32, bounded by
+  whichever of the two budgets binds first. The 64 MP total is normally the one
+  that binds — about 15 full-screen streams on a 2560x1600 output at scale 1.6 —
+  so a high `captureViews` means many small windows, not a raised cap.
 - Per-window `imageReady`: Qt has content for that window's own capture
 - `live`: that window's stream is currently updating
 - `sourceId`: stable per window for the whole session; unique across windows
-- `reason`: why a card has no image yet, e.g. an off-viewport window
-- `previewError`: an explanation if the read-only opening check failed
+- `reason`: why that card has no image. One of nine fixed strings:
+  `Waiting for window metadata`, `Window is not captureable`,
+  `Display is unavailable`, `Waiting for window geometry`,
+  `Window exceeds preview memory budget`, `Off-screen preview unavailable`,
+  `Loading window preview…`, `Preview budget reached`,
+  `Live preview stopped · reopen Overview to retry`. Two of them are summaries:
+  `Window is not captureable` and `Waiting for window metadata` each stand for
+  several conditions, so treat the string as a starting point, not a diagnosis.
+  A card that has an image reports an empty `reason`.
+- `previewError`: the reason the last open was refused, if it was — a missing or
+  unsettled display, a refused capture-context check, or the check's own verdict
+  (lock, authentication layer, unreadable or unavailable display).
+- `primed` is always `[]` and `cachedFrames` counts live streams that currently
+  hold content. Both names are historical; nothing is primed or cached.
 
 If a card stays without an image, the window is likely fully outside its display's
 viewport on Hyprland 0.56.2. Overview will not scroll the desktop, switch
 workspaces or move focus to obtain that frame. Lock/authentication guards may
 cancel opening entirely, leaving an existing authentication dialog untouched.
 
-For isolated, opt-in UI checks, run:
+`openOverview`, `toggle`, `close`, `showSettings`, `navigateDesktop` and `shutdown`
+answer `ok` when they accepted the request, or one word naming the refusal
+(`invalid`, `shutdown`, `closing`, `shown`, `opening`, `hidden`, `busy`,
+`dragging`, `settings`, `activating`, `empty`, `unavailable`); `setQuery` and
+`togglePreview` answer `true` or `false` the same way. A refusal changes nothing. `status` and
+`captureReady` are the two calls that always answer, in every state.
+
+Three isolated checks are opt-in and are **not** part of `./validate`. Each drives
+a real, visible Overview or real desktop actions:
 
 ```sh
+# Stages its own copy of the repository and briefly displays it.
 python3 tests/verify_native_previews.py --run
+
+# Against a staging copy under /tmp that is already running; needs wtype + fcitx5.
 python3 tests/verify_ui.py --run --config /tmp/<staging-copy>
+
+# Needs a disposable window of class `overview-verification` on desktop 90, which
+# you create; it performs real desktop actions and closes that window at the end.
+python3 tests/verify_live.py
 ```
 
-Both briefly display their own staging Overview and check desktop-state continuity.
+The first two check desktop-state continuity around a staging Overview; the third
+checks create/move/undo/remove/reorder and desktop-order persistence through
+`controller.py` and asserts that no other window changed desktop. Never point
+`verify_ui.py` at your installed Overview — it refuses any config outside `/tmp`.
 Offline tests and these checks do not establish physical display-hotplug safety.

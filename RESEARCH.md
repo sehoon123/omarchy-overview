@@ -1,11 +1,19 @@
 # Mission Control interaction research
 
-> Historical design notes. The background sampling, frame caching and viewport
-> priming described below have been removed, and the measurements no longer match
-> the shipped code. They are not current instructions or safety guarantees. The
-> supported implementation captures each window natively, only while Overview is
-> visible; see README.md and ARCHITECTURE.md. Do not restore the withdrawn
-> compositor patch or the output-snapshot backend.
+> **Historical design notes. Nothing in this file is an instruction.**
+>
+> The sections below record what was investigated and, from "Historical
+> off-screen capture attempt" onward, what was **built, measured and then
+> removed**. Those approaches — output snapshots and screen crops, covered-viewport
+> scrolling/priming, background sampling outside a visible session, cross-session
+> frame caches, double-buffered generation-tagged frames, the resident-worker
+> `prime` protocol and the custom compositor patch — **must not be reintroduced**.
+> The measurements in them no longer match any shipped code, and no statement here
+> is a safety guarantee.
+>
+> The supported implementation captures each window natively, only while Overview
+> is visible. For current behavior read README.md and ARCHITECTURE.md; for the
+> scope rules read AGENTS.md.
 
 Reviewed Apple’s current Mac User Guide and the installed Hyprland 0.56.2 API
 before implementation. This is an approximation, not an assertion of macOS parity.
@@ -37,6 +45,11 @@ Desktop dragging changes the overview's saved order without renumbering Hyprland
 To preserve orientation, opening prefers the previously focused window and reveals
 its desktop in a long Spaces strip. Keyboard desktop navigation also reveals its
 target; hover-preview does not unexpectedly scroll the strip beneath the pointer.
+The desktop strip reserves 16 px at both ends for the outlines and close buttons
+drawn outside the thumbnail bounds, and hit testing is clipped to the same
+viewport. (That last detail is **still current**. It was previously filed under a
+retired heading below; it is stated here so it cannot be read as part of the
+removed work.)
 
 ## Intentional boundaries
 
@@ -56,44 +69,51 @@ slots. See README.md for keyboard tradeoffs, persistence, and remaining limitati
   transient `exec_cmd` workspace rule for the disposable verification window.
 - Installed Lua definitions: `/usr/share/hypr/stubs/hl.meta.lua`.
 
-## Historical off-screen capture attempt (retired)
+## Historical off-screen capture attempt — REMOVED, do not reintroduce
 
-Hyprland 0.56.2's `CScreenshareManager::onOutputCommit` skips a window whose
-current geometry has no intersection with its monitor. This explains blank
-thumbnails for off-screen columns, including the Chromium window observed here:
+One finding from this section is still current and is the reason today's
+off-viewport cards say so instead of showing a substitute image: Hyprland 0.56.2's
+`CScreenshareManager::onOutputCommit` skips a window whose current geometry has no
+intersection with its monitor, which explains blank thumbnails for off-screen
+columns, including the Chromium window observed here:
 https://github.com/hyprwm/Hyprland/blob/v0.56.2/src/managers/screenshare/ScreenshareManager.cpp
 
-Focusing a client while a keyboard-exclusive layer owns focus does not solve it.
-The working correction scrolls the covered viewport through the documented
-`hl.dsp.layout("move …")` interface and restores the measured offset in `finally`.
-A stable address-keyed producer keeps the resulting frame after the column is
-back off-screen. Real checks confirmed both Chromium previews, unchanged focus,
-unchanged client positions and unchanged workspace membership after recovery.
+Everything that was built on top of that finding has been removed. Focusing a
+client while a keyboard-exclusive layer owned focus did not solve it. The
+correction that was tried scrolled the covered viewport through
+`hl.dsp.layout("move …")` and restored the measured offset in `finally`, and an
+address-keyed producer kept the resulting frame after the column went back
+off-screen. Those checks did confirm both Chromium previews with unchanged focus,
+positions and workspace membership — but moving a viewport to obtain a preview is
+exactly what the current scope rules forbid, so **the scrolling/priming path, its
+timer and its restore-in-`finally` handling no longer exist and must not come
+back**. Overview now reports the missing frame instead.
 
-The desktop strip also reserves 16 px at both ends for the outlines and close
-buttons drawn outside the thumbnail bounds; hit testing respects the same clip.
+## Historical resident/native-capture path — partly REMOVED
 
-## Historical resident/native-capture path (retired)
+What survived from this revision: Overview is a resident graphical-session user
+service that hides/unmaps its UI on close instead of exiting, a single IPC call
+toggles it, and it reads already-subscribed Hyprland metadata rather than shelling
+out for context.
 
-The initial design deliberately exited on close. Profiling showed this discarded
-all captured frames and repeated both GUI setup and covered-viewport priming.
-The performance revision uses a graphical-session user service, hides/unmaps the
-UI on close, pauses continuous capture, and keeps frames until their windows close
-or the process exits. A single IPC toggle reads the already-subscribed Hyprland
-context. Natural focus changes can request one background frame without scrolling.
+What was removed and must not be reintroduced: the initial design exited on close,
+and profiling that decision is what motivated keeping captured frames alive across
+sessions and re-running covered-viewport priming — both gone. Capture now exists
+**only** while a validated session is visible; nothing is kept after close, and a
+natural focus change can no longer request a background frame. The event-driven
+`PreviewScheduler`, the `prime` protocol on the resident worker, the queued-action
+cancellation of a frame wait and the service stop that waited for a viewport
+restoration have all been deleted; today's graceful stop only waits for Overview's
+own shutdown handshake, which is bounded by a watchdog.
 
-The residency revision first shortened the priming timer. The subsequent
-architecture revision replaced periodic capture polling with an event-driven
-PreviewScheduler, a resident stdio worker and direct local Hyprland IPC.
-A queued UI action cancels the frame wait before viewport restoration. The
-service's graceful stop waits for that restoration.
-
-The stale-Chromium-tab report exposed a second issue: `hasContent` is not a frame
-revision. Double-buffered, generation-tagged captures now invalidate changed
-window titles/sizes and acknowledge a genuinely new frame. Metadata events,
-focus boundaries and bounded active-window sampling keep the cache updated.
-A disposable native-window test verified the change from green old-tab pixels to
-blue new-tab pixels after moving the window fully off-screen. See ARCHITECTURE.md
-for the exact validity contract and remaining compositor limitations.
+Also removed: the double-buffered, generation-tagged frame cache added after the
+stale-Chromium-tab report (the observation behind it — that `hasContent` is not a
+frame revision — was accurate), along with bounded active-window sampling and the
+disposable off-screen native-window test that verified old-tab to new-tab pixels.
+There is no cache to invalidate any more: each visible session builds fresh
+streams and drops them on close. `keepCache` survives only as a preserved settings
+key, and the `status` payload's `primed` and `cachedFrames` names are historical.
+See ARCHITECTURE.md for the current contract and the remaining compositor
+limitations.
 
 No packaged files were modified.

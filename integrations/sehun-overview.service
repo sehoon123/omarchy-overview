@@ -1,5 +1,5 @@
 [Unit]
-Description=Resident Mission Control overview and memory-only preview cache
+Description=Resident Mission Control overview; captures only while visible
 After=graphical-session.target
 PartOf=graphical-session.target
 ConditionEnvironment=WAYLAND_DISPLAY

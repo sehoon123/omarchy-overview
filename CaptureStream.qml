@@ -53,9 +53,12 @@ Item {
     target: capture.stream
     function onHasContentChanged() { if (capture.hasContent) capture.capturedAt = Date.now() }
     function onStopped() {
+      // Never auto-retried, with no knob to make it one (AGENTS.md): every new
+      // stream is a new exposure to the compositor's session lifetime, so a
+      // `stopped` is final until an explicit new Overview session builds a fresh
+      // stream. The card says exactly that (Logic.previewReason, AUDIT.md F-11).
       capture.failed = true
       capture.release()
-      // No automatic reconnect storm. A new explicit Overview session can retry.
     }
   }
 }

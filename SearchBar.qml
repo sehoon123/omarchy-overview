@@ -13,6 +13,10 @@ Rectangle {
   signal edited()
   function focusInput() { field.forceActiveFocus() }
   function clear() { field.clear(); field.forceActiveFocus() }
+  // The production trigger is onInputMethodComposingChanged below. It is a named
+  // function because an offscreen platform never delivers preedit events, so this is
+  // the only way the post-commit half of compositionGuard can be exercised offline.
+  function noteComposition(composing) { if (!composing) imeSettled.restart() }
   radius: height / 2
   color: Qt.rgba(surfaceColor.r, surfaceColor.g, surfaceColor.b, .92)
   border.width: 1
@@ -31,10 +35,11 @@ Rectangle {
     selectionColor: bar.accent; selectedTextColor: bar.surfaceColor
     selectByMouse: true; clip: true
     maximumLength: 256
-    onInputMethodComposingChanged: if (!inputMethodComposing) imeSettled.restart()
+    onInputMethodComposingChanged: bar.noteComposition(inputMethodComposing)
     Keys.priority: Keys.BeforeItem
     Keys.onPressed: event => bar.keyPressed(event)
     Text {
+      objectName: "searchPlaceholder"
       anchors.fill: parent; verticalAlignment: Text.AlignVCenter
       text: "Search windows"; textFormat: Text.PlainText
       color: bar.textColor; opacity: .55; font: field.font
@@ -44,7 +49,7 @@ Rectangle {
   Item {
     id: clearButton
     anchors.right: parent.right; width: 34; height: parent.height
-    Text { anchors.centerIn: parent; text: "×"; font.pixelSize: 18; color: bar.textColor; visible: !!bar.text }
+    Text { objectName: "searchClear"; anchors.centerIn: parent; text: "×"; font.pixelSize: 18; color: bar.textColor; visible: !!bar.text }
     MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: bar.clear() }
   }
 }

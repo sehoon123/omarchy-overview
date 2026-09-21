@@ -7,8 +7,12 @@ MouseArea {
   hoverEnabled: true
   acceptedButtons: Qt.LeftButton
   preventStealing: true
-  property var hitTest: (x, y) => ({ kind: "background", key: "background" })
-  property var hovered: ({ kind: "background", key: "background" })
+  // The hit test is injected (shell.qml:973 -> zones()); a zone it cannot name must
+  // read as the background, never as a missing object every binding here dereferences
+  // (cursorShape, shell.qml:984-990) and never as a fabricated drop target.
+  readonly property var noZone: ({ kind: "background", key: "background" })
+  property var hitTest: (x, y) => noZone
+  property var hovered: noZone
   property var pressedZone: null
   property point pressPoint: Qt.point(0, 0)
   property bool dragging: false
@@ -25,8 +29,12 @@ MouseArea {
     dragging = false
     pressedZone = null
   }
+  function probe(x, y) {
+    const zone = hitTest(x, y)
+    return zone && zone.kind !== undefined && zone.key !== undefined ? zone : noZone
+  }
   function refreshHover() {
-    hovered = hitTest(mouseX, mouseY)
+    hovered = probe(mouseX, mouseY)
     if (dragging) updatedDrag(mouseX, mouseY, hovered)
   }
 
@@ -34,11 +42,11 @@ MouseArea {
     : hovered.kind === "window" || hovered.kind === "desktop" ? Qt.OpenHandCursor
     : ["add", "remove", "exit", "undo", "all"].indexOf(hovered.kind) >= 0 ? Qt.PointingHandCursor : Qt.ArrowCursor
   onPressed: mouse => {
-    pressedZone = hitTest(mouse.x, mouse.y)
+    pressedZone = probe(mouse.x, mouse.y)
     pressPoint = Qt.point(mouse.x, mouse.y)
   }
   onPositionChanged: mouse => {
-    hovered = hitTest(mouse.x, mouse.y)
+    hovered = probe(mouse.x, mouse.y)
     if (pressedZone && !dragging && ["window", "desktop"].indexOf(pressedZone.kind) >= 0 &&
         Math.hypot(mouse.x - pressPoint.x, mouse.y - pressPoint.y) >= threshold) {
       dragging = true
@@ -46,17 +54,19 @@ MouseArea {
     }
     if (dragging) updatedDrag(mouse.x, mouse.y, hovered)
   }
+  // The grab is released before the zone is resolved: a hit test that throws may cost
+  // this one drop, but it must never stay latched in a drag with the ghost on screen.
   onReleased: mouse => {
     const source = pressedZone
-    const target = hitTest(mouse.x, mouse.y)
     const wasDragging = dragging
     dragging = false
     pressedZone = null
+    const target = probe(mouse.x, mouse.y)
     if (wasDragging) droppedZone(source, target)
     else if (source && source.key === target.key) clickedZone(target, mouse.modifiers)
   }
   onCanceled: cancelDrag()
-  onExited: if (!dragging) hovered = ({ kind: "background", key: "background" })
+  onExited: if (!dragging) hovered = noZone
   onWheel: wheel => {
     if (wheel.y < 150) {
       scrollStrip(-(wheel.angleDelta.x || wheel.angleDelta.y))

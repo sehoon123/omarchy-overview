@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
-# Toggle the resident, user-owned overview; cached frames stay in memory only.
+# Toggle the resident, user-owned overview. It captures only while visible and
+# keeps no frame cache; window images live in the running process and nowhere else.
 set -euo pipefail
 config="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/overview"
 ipc() { timeout 1 quickshell ipc -p "$config" call overview "$@"; }
 
-# The service's graceful stop must wait for any covered scroll to be restored.
+# The service's graceful stop waits for Overview's own shutdown handshake: the
+# shell latches the request, closes, and arms a 3 s watchdog that forces the quit
+# even if an action, an open or a settings write is still in flight. Six seconds
+# is that watchdog plus room for the close and the final write; `ipc status` is
+# the liveness probe, so the loop ends as soon as the process is gone.
 if [[ "${1:-}" == --shutdown ]]; then
   ipc shutdown >/dev/null 2>&1 || exit 0
   deadline=$((SECONDS + 6))
@@ -22,10 +27,18 @@ mode=""
 case "${1:-}" in
   --next|--previous)
     direction="${1#--}"
-    if [[ "$(ipc navigateDesktop "$direction" 2>/dev/null || true)" != ok ]]; then
-      exec python3 "$config/controller.py" step "$direction"
+    # Overview answers `ok` when it moved, or a named refusal when it is running
+    # and deliberately did nothing - never switch a desktop behind a visible or
+    # an opening session. Only a call it never answered (it is not running;
+    # `quickshell ipc` then exits non-zero and reports that on stdout) or the
+    # explicit `unavailable` (hidden, and its worker could not take the step)
+    # reaches the fallback, which dispatches a real workspace switch.
+    if reply="$(ipc navigateDesktop "$direction" 2>/dev/null)"; then
+      [[ "$reply" == unavailable ]] || exit 0
     fi
-    exit 0 ;;
+    # Bounded: the controller already refuses a contended action lock within
+    # 1.5 s, and this ceiling keeps a held keybinding from stacking processes.
+    exec timeout 3 python3 "$config/controller.py" step "$direction" ;;
   --app) mode=app ;;
   "") ;;
   *) echo 'Usage: omarchy-overview [--app|--next|--previous|--shutdown]' >&2; exit 2 ;;
@@ -34,13 +47,16 @@ esac
 exec 9>"${XDG_RUNTIME_DIR:?}/sehun-overview.lock"
 flock -n 9 || exit 0
 # Warm path: one IPC request, no process restart or hyprctl/jq context probes.
-if ipc toggle "$mode" >/dev/null 2>&1; then exit 0; fi
+# `ok` is the only reply that means the request was accepted; a refusal (a close
+# animation, a shutdown in flight) is not success, so it falls through to the
+# retry loop below instead of reporting a silent no-op as a completed toggle.
+if [[ "$(ipc toggle "$mode" 2>/dev/null || true)" == ok ]]; then exit 0; fi
 
 if ! systemctl --user start sehun-overview.service; then
   env OVERVIEW_START_HIDDEN=1 quickshell -p "$config" --no-duplicate --daemonize 9>&-
 fi
 for ((i = 0; i < 60; i++)); do
-  if ipc toggle "$mode" >/dev/null 2>&1; then exit 0; fi
+  if [[ "$(ipc toggle "$mode" 2>/dev/null || true)" == ok ]]; then exit 0; fi
   sleep .025
 done
 echo 'Unable to open Overview' >&2

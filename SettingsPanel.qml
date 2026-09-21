@@ -49,6 +49,7 @@ FocusScope {
           onToggled: panel.store.set("followTheme", checked)
         }
         Controls.CheckBox {
+          objectName: "blurToggle"
           text: "Blur wallpaper"; checked: panel.store.values.blur
           enabled: panel.store.writable
           onToggled: panel.store.set("blur", checked)
@@ -58,23 +59,27 @@ FocusScope {
           Controls.Label { text: panel.store.values.dim + "%" }
         }
         Controls.Slider {
+          objectName: "dimSlider"
           Layout.fillWidth: true
           from: 0; to: 80; stepSize: 1; value: panel.store.values.dim
           enabled: panel.store.writable
           onMoved: panel.store.set("dim", value)
         }
         Controls.CheckBox {
+          objectName: "motionToggle"
           text: "Animate window layout"; checked: panel.store.values.motion
           enabled: panel.store.writable
           onToggled: panel.store.set("motion", checked)
         }
         Controls.CheckBox {
+          objectName: "monitorOnlyToggle"
           text: "Only this monitor's windows"; checked: panel.store.values.monitorOnly
           enabled: panel.store.writable
           onToggled: panel.store.set("monitorOnly", checked)
         }
         Controls.Label { text: "Live window previews"; font.bold: true; Layout.topMargin: 8 }
         Controls.ComboBox {
+          objectName: "liveLimitCombo"
           Layout.fillWidth: true
           model: ["All displayed windows", "Selected window only", "Up to 6 live windows", "Up to 12 live windows"]
           currentIndex: [0, 1, 6, 12].indexOf(panel.store.values.liveLimit)
@@ -94,6 +99,7 @@ FocusScope {
           text: "Search: type or Ctrl+F\nQuick Look: Space (empty search) or Ctrl+Space\nEsc: close preview, clear search, then exit"
         }
         Controls.Label {
+          objectName: "statusLabel"
           Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: 12
           text: panel.store.error || (panel.store.saving ? "Saving…" : "Changes are saved automatically")
           color: panel.store.error ? "#ea6962" : panel.textColor

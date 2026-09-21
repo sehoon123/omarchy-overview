@@ -13,6 +13,8 @@ OpenRequest {
     command: ["python3", "-u", client.helperPath, client.outputName]
     stdout: SplitParser { onRead: data => client.receive(data) }
     // Metadata-only protocol; the helper never handles window pixels or titles.
-    onExited: client.processExited()
+    // The exit code/status only classifies the failure reason (missing python3,
+    // crash, silent exit); no payload is ever read from the adapter.
+    onExited: (exitCode, exitStatus) => client.processExited(exitCode, exitStatus)
   }
 }

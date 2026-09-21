@@ -9,7 +9,11 @@ Item {
   property bool highlighted: false
   property bool showTitle: true
   property string unavailableText: "Live preview unavailable"
-  readonly property string appName: windowInfo && windowInfo.lastIpcObject ? String(windowInfo.lastIpcObject.class || "Window").split(".").pop() : "Window"
+  // A reverse-DNS class ending in a separator ("org.gnome.Nautilus.") used to pop
+  // an empty segment and leave the card heading blank, so empty parts are skipped.
+  readonly property string appName: windowInfo && windowInfo.lastIpcObject
+    ? String(windowInfo.lastIpcObject.class || "Window").split(".").filter(part => part.length > 0).pop() || "Window"
+    : "Window"
   property string label: windowInfo ? (windowInfo.title || appName) : ""
   property color accent: "#76b5ff"
   property color surfaceColor: "#252a36"
@@ -38,16 +42,19 @@ Item {
       border.width: 2; border.color: root.accent; visible: root.highlighted
     }
     Rectangle {
+      objectName: "previewPlaceholder"
       anchors.fill: parent; color: root.surfaceColor; radius: 6
       visible: !root.hasThumbnail
       Column {
         anchors.centerIn: parent; width: Math.max(0, parent.width - 24); spacing: 10
         Text {
+          objectName: "previewHeading"
           width: parent.width; text: root.appName; textFormat: Text.PlainText
           horizontalAlignment: Text.AlignHCenter; elide: Text.ElideRight
           color: root.textColor; font.pixelSize: 18; font.bold: true
         }
         Text {
+          objectName: "previewUnavailable"
           width: parent.width; text: root.unavailableText; textFormat: Text.PlainText
           horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap
           color: root.textColor; opacity: .6; font.pixelSize: 11
@@ -61,14 +68,20 @@ Item {
       sourceComponent: ShaderEffectSource {
         objectName: "previewTexture"
         sourceItem: root.sharedCapture ? root.sharedCapture.image || null : null
-        // One native source, sampled at 2x presentation size for clear text.
-        textureSize: Qt.size(Math.max(1, Math.min(sourceItem ? sourceItem.width : 1, Math.ceil(width * 2))),
-                             Math.max(1, Math.min(sourceItem ? sourceItem.height : 1, Math.ceil(height * 2))))
+        // One native source, sampled at 2x presentation size for clear text, with
+        // the request quantised to a 64 px grid: a ShaderEffectSource recreates its
+        // FBO whenever textureSize changes, and the card's width/height are animated
+        // (shell.qml:684-687), so tracking them pixel by pixel reallocated a texture
+        // on essentially every animation frame. Never below ceil(size * 2), never
+        // above the native source.
+        textureSize: Qt.size(Math.max(1, Math.min(sourceItem ? sourceItem.width : 1, Math.ceil(width * 2 / 64) * 64)),
+                             Math.max(1, Math.min(sourceItem ? sourceItem.height : 1, Math.ceil(height * 2 / 64) * 64)))
         hideSource: true; live: root.live && root.hasThumbnail
         smooth: true; mipmap: true
       }
     }
     Rectangle {
+      objectName: "previewPaused"
       anchors { left: parent.left; top: parent.top; margins: 6 }
       width: 52; height: 20; radius: 4; color: "#c0202633"
       visible: root.hasThumbnail && root.showTitle && root.sharedCapture && root.sharedCapture.allowStart !== false && !root.sharedCapture.fresh && frame.width > 120
@@ -81,6 +94,7 @@ Item {
       visible: root.showTitle
       Text {
         id: title
+        objectName: "previewTitle"
         anchors.centerIn: parent; width: Math.max(0, parent.width - 22)
         text: root.label; textFormat: Text.PlainText
         elide: Text.ElideRight; color: root.textColor; font.pixelSize: 12

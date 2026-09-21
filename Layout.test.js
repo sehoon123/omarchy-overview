@@ -1,5 +1,5 @@
 const assert = require('node:assert/strict');
-const { aspectFor, arrange, neighbor } = require('./Layout.js');
+const { aspectFor, animationOrigin, arrange, neighbor } = require('./Layout.js');
 
 for (const [width, height] of [[2304, 1114], [1260, 680], [740, 1100], [132, 68]]) {
   for (let count = 1; count <= 40; count++) {
@@ -60,4 +60,11 @@ for (const compact of [false, true]) {
     }
   }
 }
-console.log('Layout tests passed (160 screen/window-count combinations + capture/spacing regressions).');
+const output = { id: 0, x: -1600, y: 200, width: 1600, height: 1000 };
+const fallback = { x: 100, y: 50, width: 400, height: 300 };
+const native = { lastIpcObject: { monitor: 0, at: [-1500, 300], size: [800, 600] } };
+assert.deepEqual(animationOrigin(native, output, { x: 40, y: 180 }, fallback), { x: 60, y: -80, width: 800, height: 600 });
+assert.equal(animationOrigin(native, { ...output, id: 2 }, { x: 0, y: 0 }, fallback), fallback);
+assert.equal(animationOrigin({ lastIpcObject: { monitor: 0, at: [-3000, 300], size: [800, 600] } }, output, { x: 0, y: 0 }, fallback), fallback);
+assert.equal(animationOrigin({}, output, { x: 0, y: 0 }, fallback), fallback);
+console.log('Layout tests passed (160 screen/window-count combinations + capture/spacing/motion regressions).');

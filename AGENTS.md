@@ -7,9 +7,17 @@
   plugins. Do not reinstall the withdrawn compositor patch from Git history.
 - The supported compositor is the official distribution package. Installed and
   running versions are distinct; never restart/logout the user's desktop.
-- Do not use native window/toplevel capture on affected Hyprland. Output-only
-  screenshots are the preview fallback; no automatic focus, workspace switching,
-  viewport scrolling or output reconfiguration to obtain previews.
+- The user rejected output snapshots and requested Mac-like Exposé behavior;
+  omarchy-expose is a reference, not the product specification. Use real window
+  previews, stable cards, correct proportions, and direct selection/return.
+- Native capture belongs only to a visible Overview session with validated
+  window/monitor state. Release sources AND objects on close/topology changes;
+  never keep background capture, retry loops, or cross-session image caches.
+- Client lifecycle guards do not fix Hyprland 0.56.2's monitor-lifetime defect.
+  Do not reproduce it or claim hotplug safety. Fully off-viewport native frames
+  are compositor-limited; do not hide this with screen crops or fake thumbnails.
+- No automatic focus, workspace switching, viewport scrolling or output
+  reconfiguration to obtain previews. Those require a separate user decision.
 - Existing explicit user actions (select/move/reorder windows and desktops) are
   allowed; preview generation itself must be read-only.
 - Preview images stay in memory, not files, logs, screenshots committed to Git,

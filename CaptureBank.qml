@@ -1,40 +1,52 @@
 import QtQuick
 
-// Stable address-keyed producers. A Repeater would discard cached frames when
-// the window model resets/reorders during focus changes. Generic for Qt tests.
+// Stable native producers, owned by one visible Overview session. Search,
+// selection, desktop thumbnails and Quick Look share these same instances.
 Item {
   id: bank
   property var model: null
-  property bool live: true
+  property bool active: false
+  property bool allowNew: true
+  property var addresses: []
   property var liveAddresses: []
   property var entries: ({})
   property int revision: 0
+  property int nextSerial: 0
   required property Component factory
   readonly property var windows: model ? model.values : []
+  readonly property int viewCount: Object.values(entries).reduce((n, e) => n + e.viewCount, 0)
+  readonly property int frameCount: Object.values(entries).filter(e => e.hasContent).length
   onWindowsChanged: Qt.callLater(reconcile)
-  Component.onCompleted: Qt.callLater(reconcile)
+  onAddressesChanged: Qt.callLater(reconcile)
+  onActiveChanged: { if (active) Qt.callLater(reconcile); else clear() }
+  onAllowNewChanged: if (allowNew && active) Qt.callLater(reconcile)
+  Component.onCompleted: if (active) Qt.callLater(reconcile)
 
-  function wantsLive(address) { return live && liveAddresses.includes(address) }
-  function lookup(address) {
-    const revisionDependency = revision
-    return entries[address] || null
+  function wantsLive(address) { return active && liveAddresses.includes(address) }
+  function lookup(address) { const dependency = revision; return entries[address] || null }
+  function release(entry) {
+    if (!entry) return
+    entry.captureEnabled = false
+    entry.destroy()
+  }
+  function clear() {
+    const old = entries
+    entries = ({}); revision++
+    for (const address in old) release(old[address])
   }
   function reconcile() {
-    if (!factory) return
+    if (!active || !factory) { clear(); return }
     const next = {}
-    for (const w of windows) {
-      const existing = entries[w.address]
-      if (existing) {
-        if (existing.modelData !== w) existing.modelData = w
-        next[w.address] = existing
-      } else {
-        next[w.address] = factory.createObject(bank, { modelData: w })
-      }
+    for (const window of windows) {
+      if (!addresses.includes(window.address) || next[window.address]) continue
+      const old = entries[window.address]
+      // Address reuse is not identity continuity. Never inherit another source.
+      const entry = old && old.modelData === window ? old : allowNew
+        ? factory.createObject(bank, { modelData: window, serial: ++nextSerial }) : null
+      if (entry) next[window.address] = entry
     }
-    for (const address in entries) {
-      if (!next[address] && entries[address]) entries[address].destroy()
-    }
-    entries = next
-    revision++
+    for (const address in entries)
+      if (entries[address] !== next[address]) release(entries[address])
+    entries = next; revision++
   }
 }

@@ -1,9 +1,11 @@
 # Mission Control interaction research
 
-> Historical design notes. The native capture, background sampling, and viewport
-> priming described below have been removed. They are not current instructions
-> or safety guarantees. The supported implementation uses output-only snapshots;
-> see README.md and ARCHITECTURE.md. Do not restore the withdrawn compositor patch.
+> Historical design notes. The background sampling, frame caching and viewport
+> priming described below have been removed, and the measurements no longer match
+> the shipped code. They are not current instructions or safety guarantees. The
+> supported implementation captures each window natively, only while Overview is
+> visible; see README.md and ARCHITECTURE.md. Do not restore the withdrawn
+> compositor patch or the output-snapshot backend.
 
 Reviewed Apple’s current Mac User Guide and the installed Hyprland 0.56.2 API
 before implementation. This is an approximation, not an assertion of macOS parity.

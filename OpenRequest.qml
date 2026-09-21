@@ -24,12 +24,12 @@ Item {
   }
   function receive(data) {
     if (!pending) return
-    if (data.length > 9 * 1024 * 1024) { reply = null; return }
+    if (data.length > 32768) { reply = null; return }
     try { reply = JSON.parse(data) } catch (error) { reply = null }
   }
   function processExited() {
     processActive = false
-    finish(reply || { ok: false, reason: "Output snapshot unavailable" })
+    finish(reply || { ok: false, reason: "Capture context unavailable" })
   }
   function finish(result) {
     if (!pending) return
@@ -41,7 +41,7 @@ Item {
     interval: flow.timeoutMs
     onTriggered: {
       // Invalidate before terminating: late stdout/exit cannot reopen the UI.
-      flow.finish({ ok: false, reason: "Snapshot timed out; showing available cards" })
+      flow.finish({ ok: false, reason: "Capture context check timed out" })
       if (flow.processActive) flow.stopRequested()
     }
   }

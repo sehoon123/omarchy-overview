@@ -12,7 +12,12 @@ ShellRoot {
   id: root
   property bool shown: false
   property bool opening: false
-  property string snapshotError: ""
+  property bool closing: false
+  property real motionProgress: 0
+  property var animationOrigins: ({})
+  property string previewError: ""
+  property bool contextAllowed: false
+  property var allowedOutputs: []
   property string displayName: ""
   property var filterWorkspace: 1
   property string appFilter: ""
@@ -47,12 +52,20 @@ ShellRoot {
   readonly property bool preparing: opening
   // Eager subscriptions make opening independent of CLI context probes.
   readonly property var observedMonitors: Hyprland.monitors.values
-  // Never create native window/toplevel captures on stock Hyprland.
-  // Only the output-snapshot helper supplies memory-only preview images.
-  readonly property bool windowCaptureEnabled: false
-  // Pause output snapshots after topology transitions; no background sampling.
+  // Capture objects exist only in a mapped, validated Overview session.
+  // This avoids hidden capture; it is NOT a compositor monitor-lifetime fix.
+  readonly property bool windowCaptureEnabled: shown && framePresented && contextAllowed && captureTopologyReady
+  readonly property var captureScreens: allowedOutputs.filter(output => previewScreens.some(s => s.name === output.name))
+  readonly property var captureMembers: allWindows.filter(w => workspaceIds.includes(Logic.workspaceKey(w.workspace)))
+  readonly property var capturePriority: [previewAddress, dragSource ? dragSource.address : "", selectedAddress]
+    .concat(windows.map(w => w.address))
+  readonly property var captureAddresses: windowCaptureEnabled ? Logic.capturePlan(captureMembers, capturePriority, captureScreens) : []
+  readonly property var liveCaptureAddresses: Logic.liveAddresses(previewAddress || closing ? [] : windows,
+    closing ? [] : capturePriority.slice(0, 3), preferences.values.liveLimit)
+    .filter(address => captureAddresses.includes(address))
+  // Monitor/output transitions invalidate the entire visible capture session.
   readonly property var previewScreens: Logic.previewScreens(Quickshell.screens)
-  readonly property string previewTopology: JSON.stringify(previewScreens.map(s => [s.name, s.width, s.height]))
+  readonly property string previewTopology: JSON.stringify(previewScreens.map(s => [s.name, s.x, s.y, s.width, s.height]))
   property bool captureTopologyReady: false
   onPreviewTopologyChanged: pauseCaptures()
   readonly property var focusedWindow: Logic.focusedWindow(Hyprland.activeToplevel, Hyprland.toplevels.values)
@@ -62,8 +75,8 @@ ShellRoot {
   readonly property string stateHome: Quickshell.env("XDG_STATE_HOME") || Quickshell.env("HOME") + "/.local/state"
   readonly property string wallpaper: "file://" + stateHome + "/omarchy/current/background?v=" + wallpaperRevision
   readonly property var allWindows: Hyprland.toplevels.values.filter(w =>
-    w.lastIpcObject.mapped !== false && Logic.workspaceKey(w.workspace)
-  ).slice().sort((a, b) => a.workspace.id - b.workspace.id || a.address.localeCompare(b.address))
+    w && w.lastIpcObject && w.lastIpcObject.mapped !== false && Logic.workspaceKey(w.workspace)
+  ).slice().sort(Logic.spatialCompare)
   readonly property var scopeWindows: allWindows.filter(w => (filterWorkspace === 0 || Logic.workspaceKey(w.workspace) === filterWorkspace) &&
     (!appFilter || w.lastIpcObject.class === appFilter) && (!(perMonitor || preferences.values.monitorOnly) ||
       (w.workspace && w.workspace.monitor ? w.workspace.monitor.name === displayName :
@@ -101,10 +114,20 @@ ShellRoot {
 
   function pauseCaptures() {
     captureTopologyReady = false
-    if (snapshots) snapshots.cancel()
+    contextAllowed = false; allowedOutputs = []; pendingWindow = null
+    if (openGuard) openGuard.cancel()
     if (captureBank) captureBank.clear()
+    if (shown) finishClose()
     opening = false
     captureSettle.restart()
+  }
+  function previewReason(w) {
+    const reason = Logic.captureReason(w, captureScreens)
+    if (reason) return reason
+    const capture = captureFor(w.address)
+    if (!capture) return !windowCaptureEnabled || captureAddresses.includes(w.address)
+      ? "Loading window preview…" : "Preview budget reached"
+    return capture.failed ? "Live preview unavailable" : "Loading window preview…"
   }
   function aspectFor(w) { return OverviewLayout.aspectFor(w, captureFor(w.address)) }
   function captureFor(address) { return captureBank.lookup(address) }
@@ -117,36 +140,47 @@ ShellRoot {
     appFilter = mode === "app" && focusedWindow ? focusedWindow.lastIpcObject.class || "" : ""
     if (mode === "app") filterWorkspace = 0
     selected = Logic.selectionIndex(windows, focusedWindow ? focusedWindow.address : "", 0)
-    selectedAddress = windows[selected] ? windows[selected].address : ""; keyboardSelection = false
+    selectedAddress = windows[selected] ? windows[selected].address : ""; keyboardSelection = true
     input.cancelDrag(); input.hovered = ({ kind: "background", key: "background" })
     message = ""; undoRecord = null
     closeWhenDone = false
     desktopFlick.contentX = 0
     openedAt = Date.now(); firstFrameMs = -1; framePresented = false
-    opening = true; openCount++; snapshotError = ""
-    // The panel must stay unmapped until the output snapshot is complete.
-    // A cold start waits for the already bounded topology timer, not an empty
-    // first overview that the user would have to close and reopen.
+    opening = true; openCount++; previewError = ""; contextAllowed = false
+    Hyprland.refreshMonitors(); Hyprland.refreshWorkspaces(); Hyprland.refreshToplevels()
     if (captureSettle.running && !captureTopologyReady) return
-    beginSnapshot()
+    checkOpeningContext()
   }
-  function beginSnapshot() {
-    if (opening && !snapshots.request(displayName)) presentOverview()
+  function checkOpeningContext() {
+    if (opening && !openGuard.request(displayName)) {
+      previewError = "Previous capture-context check is stopping"
+      finishClose()
+    }
   }
   function presentOverview() {
     if (!opening || shutdownRequested) return
-    opening = false; shown = true
-    if (snapshotError) flash(snapshotError)
+    opening = false; closing = false
+    motionProgress = preferences.values.motion ? 0 : 1
+    const output = captureScreens.find(s => s.name === displayName), origins = {}
+    for (let i = 0; i < windows.length; i++)
+      origins[windows[i].address] = OverviewLayout.animationOrigin(windows[i], output, { x: stage.x, y: stage.y }, placements[i])
+    animationOrigins = origins
+    shown = true
+    if (preferences.values.motion) enterMotion.restart()
     stateRefresh.restart()
     Qt.callLater(revealDesktop)
     Qt.callLater(search.focusInput)
   }
   function finishClose() {
-    opening = false; snapshots.cancel()
-    shown = false
+    enterMotion.stop(); exitMotion.stop()
+    contextAllowed = false; opening = false; closing = false; openGuard.cancel()
+    captureBank.clear()
+    shown = false; motionProgress = 0
     message = ""; undoRecord = null
     input.cancelDrag(); hoverTimer.stop()
     previewAddress = ""; settingsShown = false
+    if (shutdownRequested) pendingWindow = null
+    if (pendingWindow && !activateTimer.running) activateTimer.start()
     finishShutdown()
   }
   function finishShutdown() {
@@ -207,9 +241,12 @@ ShellRoot {
   function flash(text) { message = text; toastTimer.restart() }
   function closeOverview() {
     input.cancelDrag()
-    if (opening) { finishClose(); return }
+    if (opening || shutdownRequested) { finishClose(); return }
     if (busy) { closeWhenDone = true; return }
-    finishClose()
+    if (closing) return
+    if (shown && preferences.values.motion) {
+      closing = true; enterMotion.stop(); openGuard.cancel(); exitMotion.restart()
+    } else finishClose()
   }
   function runAction(args, exitAfter) {
     if (busy) return
@@ -258,8 +295,7 @@ ShellRoot {
     if (busy) return
     if (index < 0 || index >= windows.length) { switchDesktop(filterWorkspace); return }
     pendingWindow = windows[index]
-    shown = false
-    activateTimer.start()
+    closeOverview()
   }
   function finishDrag(source, target) {
     dragSource = null; dragTarget = null; hoverTimer.stop()
@@ -370,6 +406,9 @@ ShellRoot {
       if (["createworkspace", "destroyworkspace", "moveworkspace", "renameworkspace", "monitoradded", "monitorremoved", "configreloaded"].includes(event.name))
         stateRefresh.restart()
       if (["movewindow", "movewindowv2"].includes(event.name)) Hyprland.refreshToplevels()
+      if (event.name === "openlayer" && /omarchy-polkit|hyprlock|swaylock|gtklock|omarchy-lockscreen/.test(event.data)) {
+        root.pendingWindow = null; root.finishClose()
+      }
     }
   }
   BackendClient {
@@ -378,19 +417,24 @@ ShellRoot {
     onReadyChanged: if (ready) root.runAction(["state"])
     onCompleted: (ticket, result) => { if (ticket === root.actionTicket) root.actionFinished(result) }
   }
-  SnapshotClient {
-    id: snapshots
-    helperPath: Quickshell.shellPath("snapshot.py")
+  OpenGuard {
+    id: openGuard
+    helperPath: Quickshell.shellPath("capture_context.py")
     onCompleted: result => {
-      if (!root.opening) return
-      root.snapshotError = result.ok ? (result.frames && result.frames.length ? "" : result.reason || "")
-        : result.reason || "Snapshot unavailable"
-      if (result.blocked) {
-        captureBank.clear(); root.finishClose(); return
+      if (!root.opening && !root.shown) return
+      if (!result.ok || !Array.isArray(result.outputs)) {
+        root.previewError = result.reason || "Capture context unavailable"
+        root.pendingWindow = null; root.finishClose(); return
       }
-      if (result.ok) captureBank.accept(result)
-      root.presentOverview()
+      root.allowedOutputs = result.outputs
+      root.contextAllowed = true
+      if (root.opening) root.presentOverview()
     }
+  }
+  // Read-only security recheck while visible only; never captures pixels.
+  Timer {
+    interval: 1000; repeat: true; running: root.shown && !root.closing
+    onTriggered: if (!openGuard.pending && !openGuard.processActive) openGuard.request(root.displayName)
   }
   Connections {
     target: content.Window.window
@@ -401,14 +445,16 @@ ShellRoot {
       }
     }
   }
+  NumberAnimation { id: enterMotion; target: root; property: "motionProgress"; to: 1; duration: 190; easing.type: Easing.OutCubic }
+  NumberAnimation { id: exitMotion; target: root; property: "motionProgress"; to: 0; duration: 130; easing.type: Easing.InCubic; onFinished: root.finishClose() }
   Timer { id: toastTimer; interval: 6500; onTriggered: root.message = "" }
-  // No hidden/background capture. Cached PNGs never retain a capture session.
+  // A new session must wait for settled output metadata.
   Timer {
     id: captureSettle
     interval: 1000
     onTriggered: {
       root.captureTopologyReady = root.previewScreens.length > 0
-      if (root.opening) root.beginSnapshot()
+      if (root.opening) root.checkOpeningContext()
     }
   }
   FileView {
@@ -443,8 +489,9 @@ ShellRoot {
 
   IpcHandler {
     target: "overview"
-    function openOverview(): void { root.openOverview("") }
+    function openOverview(): void { if (!root.closing) root.openOverview("") }
     function toggle(mode: string): void {
+      if (root.closing) return
       if (root.shown || root.opening) root.closeOverview()
       else root.openOverview(mode)
     }
@@ -454,16 +501,22 @@ ShellRoot {
       return !!source && source.hasContent
     }
     function close(): void { root.closeOverview() }
+    function setQuery(text: string): bool {
+      if (!root.shown || root.closing || root.busy || root.settingsShown) return false
+      root.closePreview(); search.text = text; root.keyboardSelection = true
+      return true
+    }
     function togglePreview(): bool {
-      if (!root.shown || root.settingsShown) return false
+      if (!root.shown || root.closing || root.settingsShown) return false
       const before = root.previewAddress
       root.togglePreview()
       return before !== root.previewAddress
     }
-    function showSettings(): void { if (root.shown) root.showSettings() }
+    function showSettings(): void { if (root.shown && !root.closing) root.showSettings() }
     function navigateDesktop(direction: string): string {
-      if (!root.shown) {
-        if (root.opening || !bridge.ready || root.busy || activateTimer.running) return "hidden"
+      if (!root.shown || root.closing) {
+        if (root.opening) { root.finishClose(); return "hidden" }
+        if (root.closing || root.pendingWindow || !bridge.ready || root.busy || activateTimer.running) return "hidden"
         root.runAction(["step", direction])
         return "ok"
       }
@@ -480,21 +533,24 @@ ShellRoot {
           if (item && item.modelData.address === w.address) { imageReady = item.hasThumbnail; break }
         }
         cards.push({ address: w.address, thumbnail: !!source && source.hasContent, imageReady: imageReady,
-          partial: !!source && source.partial, fresh: !!source && source.fresh, generation: source ? source.generation : 0,
+          sourceId: source ? source.serial : 0, live: !!source && source.fresh,
+          reason: source && source.hasContent ? "" : root.previewReason(w),
+          fresh: !!source && source.fresh, generation: source ? source.generation : 0,
           capturedAt: source ? source.capturedAt : 0 })
       }
       return JSON.stringify({ visible: root.shown, busy: root.busy, desktop: root.filterWorkspace, appFilter: root.appFilter,
         order: root.workspaceIds, perMonitor: root.perMonitor, monitor: root.displayName,
         desktopLabels: root.workspaceIds.map(root.desktopLabel), windows: cards, dragging: input.dragging, message: root.message,
         query: root.query, selectedAddress: root.selectedAddress, previewAddress: root.previewAddress,
+        previewSourceId: root.captureFor(root.previewAddress) ? root.captureFor(root.previewAddress).serial : 0,
         settingsShown: root.settingsShown, settings: preferences.values, settingsError: preferences.error,
-        liveAddresses: [], delegateCount: windowRepeater.count,
-        cachedFrames: Object.values(captureBank.entries).filter(e => e && e.hasFrame).length,
+        liveAddresses: root.liveCaptureAddresses, delegateCount: windowRepeater.count,
+        cachedFrames: captureBank.frameCount,
         windowCaptureEnabled: root.windowCaptureEnabled,
         captureTopologyReady: root.captureTopologyReady,
-        captureViews: 0, captureBackend: "output-snapshot", opening: root.opening,
-        snapshotBytes: captureBank.retainedBytes, snapshotPixels: captureBank.retainedPixels,
-        snapshotError: root.snapshotError,
+        captureViews: captureBank.viewCount, captureBackend: "native-window", opening: root.opening,
+        closing: root.closing, motionProgress: root.motionProgress,
+        previewError: root.previewError,
         accent: String(root.accent), composing: search.input.inputMethodComposing, searchFocused: search.input.activeFocus,
         preparing: root.preparing, primed: [], openCount: root.openCount,
         firstFrameMs: root.firstFrameMs, workerPid: bridge.processId, workerRestarts: bridge.restarts,
@@ -514,6 +570,7 @@ ShellRoot {
     WlrLayershell.namespace: "sehun-overview"
     WlrLayershell.keyboardFocus: root.shown ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
     color: "#151923"
+    HyprlandWindow.opacity: root.motionProgress
     Image {
       anchors.fill: parent; source: root.wallpaper
       sourceSize: Qt.size(1920, 1080); fillMode: Image.PreserveAspectCrop; cache: true
@@ -524,13 +581,22 @@ ShellRoot {
 
     Item {
       id: content
-      anchors.fill: parent; focus: true
-      SnapshotBank {
+      anchors.fill: parent; focus: true; enabled: !root.closing
+      CaptureBank {
         id: captureBank
         model: Hyprland.toplevels
-        shown: root.shown
-        keepCache: preferences.values.keepCache
-        openedAt: root.openedAt
+        active: root.windowCaptureEnabled
+        allowNew: !root.closing
+        addresses: root.captureAddresses
+        liveAddresses: root.liveCaptureAddresses
+        factory: Component {
+          NativeCapture {
+            allowStart: !root.closing
+            captureEnabled: root.windowCaptureEnabled && root.captureAddresses.includes(modelData.address) &&
+              Logic.canCapture(root.shown, root.captureTopologyReady, modelData, root.captureScreens)
+            live: captureBank.wantsLive(modelData.address)
+          }
+        }
       }
       Keys.onPressed: event => root.handleKey(event, search.input.activeFocus)
 
@@ -614,16 +680,21 @@ ShellRoot {
             visible: inLayout
             onInLayoutChanged: { positioned = false; if (inLayout) Qt.callLater(() => positioned = true) }
             readonly property var rect: root.placements[layoutIndex] || ({ x: 0, y: 0, width: 0, height: 0 })
-            x: rect.x; y: rect.y; width: rect.width; height: rect.height
+            readonly property var origin: root.animationOrigins[modelData.address] || rect
+            x: origin.x + (rect.x - origin.x) * root.motionProgress
+            y: origin.y + (rect.y - origin.y) * root.motionProgress
+            width: origin.width + (rect.width - origin.width) * root.motionProgress
+            height: origin.height + (rect.height - origin.height) * root.motionProgress
             windowInfo: modelData; sharedCapture: root.captureFor(modelData.address); live: root.shown && inLayout
+            unavailableText: root.previewReason(modelData)
             accent: root.accent; surfaceColor: root.surfaceColor; textColor: root.textColor
             highlighted: !input.dragging && ((input.hovered.kind === "window" && input.hovered.address === modelData.address) ||
               (root.keyboardSelection && root.selected === layoutIndex))
             opacity: root.dragSource && root.dragSource.address === modelData.address ? .25 : 1
             label: (modelData.title || modelData.lastIpcObject.class || "Window") +
               (root.filterWorkspace === 0 ? "  ·  " + root.desktopLabel(Logic.workspaceKey(modelData.workspace)) : "")
-            Behavior on x { enabled: positioned && !input.dragging && preferences.values.motion; NumberAnimation { duration: 170; easing.type: Easing.OutCubic } }
-            Behavior on y { enabled: positioned && !input.dragging && preferences.values.motion; NumberAnimation { duration: 170; easing.type: Easing.OutCubic } }
+            Behavior on x { enabled: positioned && root.motionProgress === 1 && !input.dragging && preferences.values.motion; NumberAnimation { duration: 170; easing.type: Easing.OutCubic } }
+            Behavior on y { enabled: positioned && root.motionProgress === 1 && !input.dragging && preferences.values.motion; NumberAnimation { duration: 170; easing.type: Easing.OutCubic } }
           }
         }
         Text {
@@ -656,7 +727,7 @@ ShellRoot {
       Text {
         z: 2
         anchors { left: parent.left; bottom: parent.bottom; leftMargin: 24; bottomMargin: 22 }
-        text: root.windows.length + (root.query ? " matches" : " windows") + "  ·  Snapshots, not live  ·  Space to preview  ·  Ctrl+F to search"
+        text: root.windows.length + (root.query ? " matches" : " windows") + "  ·  Space to preview  ·  Ctrl+F to search"
         color: "white"; opacity: .6; font.pixelSize: 11
       }
       Rectangle {
@@ -681,10 +752,18 @@ ShellRoot {
           anchors { fill: parent; leftMargin: 80; rightMargin: 80; topMargin: 70; bottomMargin: 90 }
           active: !!root.previewWindow
           sourceComponent: WindowPreview {
+            id: quickLook
             windowInfo: root.previewWindow
             sharedCapture: root.previewWindow ? root.captureFor(root.previewWindow.address) : null
+            unavailableText: root.previewWindow ? root.previewReason(root.previewWindow) : ""
             live: root.shown; highlighted: true
             accent: root.accent; surfaceColor: root.surfaceColor; textColor: root.textColor
+            Component.onCompleted: if (preferences.values.motion) zoomIn.start()
+            ParallelAnimation {
+              id: zoomIn
+              NumberAnimation { target: quickLook; property: "scale"; from: .94; to: 1; duration: 140; easing.type: Easing.OutCubic }
+              NumberAnimation { target: quickLook; property: "opacity"; from: 0; to: 1; duration: 140 }
+            }
           }
         }
         Text {

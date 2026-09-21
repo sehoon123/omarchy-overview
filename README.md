@@ -1,43 +1,41 @@
 # Omarchy Overview
 
-A standalone Quickshell overview for Hyprland: a window grid, desktop strip,
-search, Quick Look, and explicit drag-and-drop desktop actions. It uses Omarchy's
-public theme files without changing Omarchy Shell or the compositor.
+A standalone Quickshell overview for Hyprland: an Exposé-style window spread, a
+desktop strip, search, Quick Look, and explicit drag-and-drop desktop actions. It
+uses Omarchy's public theme files without changing Omarchy Shell or the compositor.
 
 ## Preview behavior
 
-**Previews are snapshots, not live window streams.** Before showing the panel,
-Overview takes one `grim` screenshot of the selected **output**, in memory, and
-crops unobscured visible window regions. It does not use `ScreencopyView`, native
-toplevel export, automatic focus changes, workspace switching, or viewport
-scrolling to obtain previews.
+**Previews are real window images.** While Overview is visible, each card owns one
+native Wayland capture of its own window (`ScreencopyView`), so cards show the
+actual window content at its real aspect ratio — not a screenshot of the display
+cropped into rectangles.
 
-- Visible, unobscured windows get a new snapshot when Overview opens.
-- Partly offscreen windows may show their visible portion, labeled accordingly.
-- Covered/offscreen windows and other desktops show a matching previous snapshot
-  or a readable title/app placeholder. **Not every window will have an image.**
-- Snapshots retain their real aspect ratio. Placeholder cards use bounded ratios
-  so unusual scrolling-layout geometry cannot collapse them into thin strips.
-- Quick Look enlarges the same snapshot; it does not start a live stream.
-- Images are kept only in memory, not screenshot files. The encoded cache is
-  bounded to 8 MiB and 12 million image pixels. Disabling **Keep preview cache**
-  releases it on close.
-- Title, window size, process/identity changes invalidate mismatched images;
-  topology changes clear the cache. A snapshot cannot track same-title content
-  changes while Overview remains open.
-- Snapshot errors/timeouts leave usable title cards. Lock/output safety failures
-  or an open Omarchy authentication dialog cancel opening instead. Late helper replies cannot reopen a closed Overview.
+- Cards expand from each window's position on the current display and shrink back
+  when you leave, so selection stays spatial like macOS Exposé.
+- The window grid, desktop strip and Quick Look share **one** capture per window.
+  Searching, reordering or opening Quick Look never rebuilds capture objects.
+- Captures exist only in a validated, visible session. Closing Overview disables
+  every source, destroys the objects and drops the images; nothing captures in
+  the background, and there is no cross-session image cache.
+- Live updates are prioritized (selection and Quick Look first) and bounded by the
+  **Live window previews** setting, 32 concurrent streams, and a scaled-pixel cap.
+- Windows on other desktops or behind other windows still get their own image.
+- Images stay in RAM only: no screenshot files, logs, clipboard or external
+  services.
 
-### Why output snapshots?
+### Known limitation
 
-Native **window** capture on Hyprland 0.56.2 was associated with a compositor crash
-when a captured window lost its monitor. Merely enabling the old capture path or
-checking monitor state on the client cannot remove that race.
+On Hyprland 0.56.2 a window that is entirely outside its display's viewport, e.g.
+scrolled far out of a scrolling layout, may never produce a frame. Those cards
+stay selectable and say so instead of showing a substitute image. Overview does
+**not** scroll the viewport, switch desktops, or move focus to obtain a preview.
 
-This project now avoids that path. The earlier custom Hyprland patch/build files
-have been removed, and their installation instructions are withdrawn. **No custom
-Hyprland build, package replacement, or compositor restart is required.** Output
-capture is a different path, not a claim that all compositor/hotplug bugs are fixed.
+Native window capture on this version is also associated with a compositor crash
+when a captured window loses its monitor. Overview limits exposure by capturing
+only while visible and releasing sources on monitor/topology changes, but this is
+a client-side lifecycle guard, **not** a compositor fix and not a guarantee for
+display hotplug.
 
 ## Controls
 
@@ -47,7 +45,7 @@ capture is a different path, not a claim that all compositor/hotplug bugs are fi
 | Click a window / `Enter` | Activate that window and close |
 | Arrow keys / `Tab` / `Shift+Tab` | Navigate windows spatially |
 | `Ctrl+F` or typing | Search title, application, and desktop |
-| `Space` on an empty search field | Quick Look snapshot |
+| `Space` on an empty search field | Quick Look the selected window |
 | `Esc` | Close preview/settings, clear search, then close Overview |
 | Drag window → desktop | Move that window |
 | Drag window → `+` | Create a desktop and move the window there |
@@ -75,28 +73,30 @@ quickshell ipc -p ~/.config/omarchy/overview call overview status
 ```
 
 Open settings with the gear or `Ctrl+,`. Preferences are in
-`~/.config/omarchy/overview/settings.json`. Public theme tokens are
-read from `~/.config/omarchy/current/theme/colors.toml`. Existing preference keys,
-including the now-unused live-preview budget, are preserved rather than migrated
-or overwritten. No custom code is injected into Omarchy Shell.
+`~/.config/omarchy/overview/settings.json`. Public theme tokens are read from
+`~/.config/omarchy/current/theme/colors.toml`. Existing preference keys are
+preserved rather than migrated or overwritten. No custom code is injected into
+Omarchy Shell.
 
 ## Validation
 
 ```sh
 ./validate
 # Opt-in: briefly displays its own staging overlay. Do not interact while running.
-python3 tests/verify_output_snapshots.py --run
+python3 tests/verify_native_previews.py --run
 ```
 
-The default suite is offline: layout/search/settings/controller tests, synthetic
-PPM→PNG crop and occlusion tests, lock/topology guards, actual PNG loading in Qt,
-bounded-cache/identity tests, and mocked asynchronous cancellation/timeout tests.
-It never removes a real output or tries to reproduce a compositor crash.
+The default suite is offline: layout/search/settings/controller tests, capture
+lifecycle tests against a synthetic stream (creation only while enabled, shared
+texture for card/desktop/Quick Look, source nulled before destruction, no retry
+storm, identity continuity across search and reorder), read-only lock/output
+guard tests, and offscreen Qt/QML rendering tests. It never removes a real output
+and never tries to reproduce a compositor crash.
 
-The opt-in check starts an isolated copy in this repository, verifies decoded PNG
-previews, Quick Look, settings, and zero native capture views, then checks that
-application geometry, desktop assignments, focus, and compositor version are
-unchanged. It writes no screenshot files. Older native-capture experiments and
-full-window-readiness benchmarks are not valid acceptance tests for snapshots.
+The opt-in check starts an isolated staging copy of this repository, waits for
+live native frames, verifies that Quick Look and search reuse the same capture
+sources, and that closing releases every capture, then confirms that window
+geometry, desktop assignments, focus and the compositor process are unchanged.
+`tests/verify_ui.py` covers keyboard/IME and settings behavior the same way.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the implementation and scope boundaries.

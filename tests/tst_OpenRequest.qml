@@ -3,12 +3,12 @@ import QtTest
 import ".."
 
 Item {
-  SnapshotRequest { id: client }
+  OpenRequest { id: client }
   SignalSpy { id: finished; target: client; signalName: "completed" }
   SignalSpy { id: started; target: client; signalName: "startRequested" }
   SignalSpy { id: stopped; target: client; signalName: "stopRequested" }
   TestCase {
-    name: "OutputSnapshotRequest"; when: windowShown
+    name: "OpeningGuardRequest"; when: windowShown
     function init() {
       client.cancel(); client.processExited(); client.timeoutMs = 1000
       finished.clear(); started.clear(); stopped.clear()

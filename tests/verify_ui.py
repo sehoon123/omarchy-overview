@@ -2,8 +2,8 @@
 """Opt-in visible UI smoke test, ONLY against a temporary staging config.
 
 Uses real keyboard events, including fcitx5 Hangul composition. Never activates,
-closes or moves an application. Temporarily edits only the staged settings file.
-Do not interact with the desktop while this test runs.
+closes or moves an application, and never writes screenshots. Temporarily edits
+only the staged settings file. Do not interact with the desktop while it runs.
 """
 import argparse
 import json
@@ -52,7 +52,6 @@ def main():
         temporary = config / 'settings.test-tmp'
         temporary.write_text(json.dumps(document))
         temporary.replace(config / 'settings.json')
-    def capture(name): command('grim', '-s', '0.5', str(config / name))
     if status()['visible']:
         raise SystemExit('Close the staging Overview before testing.')
     before = json.loads(command('hyprctl', '-j', 'clients'))
@@ -68,18 +67,21 @@ def main():
         time.sleep(.35)
         baseline = status()
         assert baseline['windows'], 'Test needs at least one window on the current desktop'
-        capture('overview.png')
+        views = baseline['captureViews']
         key('space')
         wait_for(lambda: status()['previewAddress'])
-        assert len(status()['liveAddresses']) == 1, 'Quick Look should share one prioritized stream'
-        capture('quick-look.png')
+        preview = status()
+        assert preview['captureViews'] == views, 'Quick Look created another capture'
+        assert preview['previewSourceId'] and preview['previewSourceId'] in [w['sourceId'] for w in preview['windows']]
         key('Escape')
         assert status()['visible'] and not status()['previewAddress']
         query = 'overview-regression-no-match-7bca9'
         command('wtype', query)
         wait_for(lambda: status()['query'] == query)
-        assert not status()['windows']
-        assert status()['delegateCount'] == baseline['delegateCount'], 'Filtering rebuilt window delegates'
+        filtered = status()
+        assert not filtered['windows']
+        assert filtered['delegateCount'] == baseline['delegateCount'], 'Filtering rebuilt window delegates'
+        assert filtered['captureViews'] == views, 'Filtering rebuilt native captures'
         key('Return')
         assert status()['visible'], 'Enter on an empty search must not switch desktops'
         key('Escape')
@@ -108,28 +110,27 @@ def main():
         assert json.loads(path.read_text())['future']['preserved']
         key('space')
         wait_for(lambda: json.loads(path.read_text()).get('followTheme') is True)
-        capture('settings.png')
         key('Escape')
         assert status()['visible'] and not status()['settingsShown']
         document = json.loads(path.read_text())
-        document.update(keepCache=False, liveLimit=1)
+        document.update(liveLimit=1, unknownFutureKey='kept')
         write_settings(document)
-        wait_for(lambda: not status()['settings']['keepCache'])
-        assert len(status()['liveAddresses']) <= 1
+        wait_for(lambda: status()['settings']['liveLimit'] == 1)
+        wait_for(lambda: len(status()['liveAddresses']) <= 1)
         call('close')
-        wait_for(lambda: not status()['visible'] and not status()['preparing'])
-        wait_for(lambda: status()['cachedFrames'] == 0)
+        wait_for(lambda: not status()['visible'] and not status()['preparing'] and not status()['closing'])
+        wait_for(lambda: status()['captureViews'] == 0 and status()['cachedFrames'] == 0)
         time.sleep(.2)
-        assert status()['cachedFrames'] == 0, 'Disabled cache refilled while hidden'
+        assert status()['captureViews'] == 0, 'Hidden capture restarted'
         call('openOverview')
-        wait_for(lambda: status()['cachedFrames'] > 0)
+        wait_for(lambda: status()['captureViews'] > 0)
         print(json.dumps({'result': 'passed', 'checks': ['stable filtered cards', 'empty-query Enter guard',
-            'Quick Look single stream', 'fcitx5 Hangul composition', 'atomic settings write',
-            'unknown settings preserved', 'cache released while hidden', 'captures rebuilt on reopen'],
+            'Quick Look shares one native source', 'fcitx5 Hangul composition', 'atomic settings write',
+            'unknown settings preserved', 'captures released while hidden', 'captures rebuilt on reopen'],
             'firstFrameMs': status()['firstFrameMs']}, ensure_ascii=False, indent=2))
     finally:
         call('close')
-        wait_for(lambda: not status()['visible'] and not status()['busy'] and not status()['preparing'])
+        wait_for(lambda: not status()['visible'] and not status()['busy'] and not status()['preparing'] and not status()['closing'])
         if saved is None:
             path.unlink(missing_ok=True)
         else:

@@ -3,8 +3,7 @@
 ## Requirements
 
 - The distribution's official Hyprland and Quickshell packages.
-- Python 3 (standard library only).
-- `grim` for output snapshots. Without it, Overview falls back to title cards.
+- Python 3 (standard library only). No `grim` or screenshot tool is needed.
 - Node.js and Qt's QML tools only for local validation.
 
 **Do not build or install a patched Hyprland for this application.** The earlier
@@ -30,8 +29,13 @@ cp ./*.qml ./*.js ./*.py ./*.md ./validate ~/.config/omarchy/overview/
 cp -a tests/. ~/.config/omarchy/overview/tests/
 
 # Retired Overview components only. Never remove personal settings.json.
-rm -f ~/.config/omarchy/overview/{CaptureProducer.qml,PreviewScheduler.qml,preview.py}
-rm -f ~/.config/omarchy/overview/tests/{tst_PreviewScheduler.qml,test_preview.py}
+cd ~/.config/omarchy/overview
+rm -f SnapshotBank.qml SnapshotClient.qml SnapshotRequest.qml FrameCache.qml \
+      CaptureProducer.qml PreviewScheduler.qml snapshot.py preview.py
+rm -f tests/tst_SnapshotBank.qml tests/tst_SnapshotClient.qml tests/tst_FrameCache.qml \
+      tests/tst_PreviewScheduler.qml tests/test_snapshot.py tests/test_preview.py \
+      tests/verify_output_snapshots.py tests/verify_freshness.py tests/benchmark_open.py
+rm -rf tests/capture-fixture
 
 systemctl --user start sehun-overview.service
 ```
@@ -49,9 +53,9 @@ Review these and the desired shortcut before installing them; this project does
 not automatically rewrite Hyprland or Omarchy Shell configuration.
 
 The service uses `OVERVIEW_START_HIDDEN=1` and keeps metadata subscriptions warm.
-The existing launcher opens/toggles it through IPC. A direct
-`quickshell -p ~/.config/omarchy/overview` invocation without that environment flag
-opens after the pre-display snapshot attempt.
+While hidden it holds no capture objects. The existing launcher opens/toggles it
+through IPC. A direct `quickshell -p ~/.config/omarchy/overview` invocation without
+that environment flag opens after the read-only context check.
 
 ## Verify
 
@@ -60,28 +64,32 @@ quickshell ipc -p ~/.config/omarchy/overview call overview status
 omarchy-overview
 ```
 
-Expected status:
+Expected status while **hidden**:
 
-- `captureBackend`: `output-snapshot`
+- `captureBackend`: `native-window`
 - `windowCaptureEnabled`: `false`
-- `captureViews`: `0`
-- `snapshotBytes`: bounded in-memory encoded cache size
-- Per-window `imageReady`: whether Qt has decoded the displayed image
-- `fresh`: `false` (a snapshot is never reported as a live stream)
-- `snapshotError`: an explanation if a capture attempt failed
+- `captureViews`: `0`, `cachedFrames`: `0`
 
-At least one unobscured window must be visible on the selected output for a new
-snapshot. Other windows may have previous snapshots or title cards. If capture
-fails, the rest of the UI remains usable; changing `windowCaptureEnabled` is not
-a supported workaround. Lock/authentication safety guards may cancel opening
-entirely, leaving an existing authentication dialog untouched.
+Expected status while **visible**:
 
-For an isolated, opt-in UI check, run:
+- `windowCaptureEnabled`: `true`, `captureViews` between 1 and 32
+- Per-window `imageReady`: Qt has content for that window's own capture
+- `live`: that window's stream is currently updating
+- `sourceId`: stable per window for the whole session; unique across windows
+- `reason`: why a card has no image yet, e.g. an off-viewport window
+- `previewError`: an explanation if the read-only opening check failed
+
+If a card stays without an image, the window is likely fully outside its display's
+viewport on Hyprland 0.56.2. Overview will not scroll the desktop, switch
+workspaces or move focus to obtain that frame. Lock/authentication guards may
+cancel opening entirely, leaving an existing authentication dialog untouched.
+
+For isolated, opt-in UI checks, run:
 
 ```sh
-python3 tests/verify_output_snapshots.py --run
+python3 tests/verify_native_previews.py --run
+python3 tests/verify_ui.py --run --config /tmp/<staging-copy>
 ```
 
-It briefly displays its own staging Overview and checks desktop-state continuity.
-Do not run old native-capture/viewport-priming experiments as acceptance tests for
-this backend. Offline tests do not establish physical hotplug safety.
+Both briefly display their own staging Overview and check desktop-state continuity.
+Offline tests and these checks do not establish physical display-hotplug safety.

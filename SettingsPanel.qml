@@ -73,19 +73,21 @@ FocusScope {
           enabled: panel.store.writable
           onToggled: panel.store.set("monitorOnly", checked)
         }
-        Controls.Label { text: "Output snapshots"; font.bold: true; Layout.topMargin: 8 }
-        Controls.Label {
-          Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: 12; opacity: .7
-          text: "Visible window regions are captured once before opening. These are not live previews. Covered/off-screen windows show their last matching snapshot or a titled card. No window capture or automatic desktop scrolling."
-        }
-        Controls.CheckBox {
-          text: "Keep previews in memory when closed"; checked: panel.store.values.keepCache
+        Controls.Label { text: "Live window previews"; font.bold: true; Layout.topMargin: 8 }
+        Controls.ComboBox {
+          Layout.fillWidth: true
+          model: ["All displayed windows", "Selected window only", "Up to 6 live windows", "Up to 12 live windows"]
+          currentIndex: [0, 1, 6, 12].indexOf(panel.store.values.liveLimit)
           enabled: panel.store.writable
-          onToggled: panel.store.set("keepCache", checked)
+          onActivated: index => panel.store.set("liveLimit", [0, 1, 6, 12][index])
         }
         Controls.Label {
           Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: 12; opacity: .7
-          text: "Keep previous snapshots for off-screen windows. Turn this off to release them when closed. No background capture or image files; the encoded cache is bounded to 8 MiB."
+          text: "Real window images, not screen crops. Quick Look and desktop thumbnails share the same source. All captures and images are released on close."
+        }
+        Controls.Label {
+          Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: 12; opacity: .7
+          text: "Hyprland 0.56.2 may not supply frames for windows fully outside a scrolling viewport. Those cards remain selectable; Overview never scrolls the desktop to obtain an image."
         }
         Controls.Label {
           Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: 12; opacity: .8

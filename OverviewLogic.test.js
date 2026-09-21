@@ -66,29 +66,54 @@ test('live budget deduplicates and always prioritizes preview/drag/selection', (
   assert.deepEqual(L.liveAddresses(windows, ['b', 'b', '', 'a'], 1), ['b']);
   assert.deepEqual(L.liveAddresses(windows, ['drag', 'b'], 6), ['drag', 'b', 'a']);
   assert.deepEqual(L.liveAddresses([], ['a', '', 'a'], 6), ['a']);
+  assert.deepEqual(L.liveAddresses(windows, ['b'], 0), ['b', 'a']);
 });
-test('previews never capture hidden, unsettled, unassigned or placeholder-only windows', () => {
-  const screens = [{ name: 'DP-2', width: 1600, height: 1000 }];
-  const window = { wayland: {}, workspace: { id: 1, monitor: { name: 'DP-2' } } };
-  assert.ok(L.canCapture(true, true, window, screens));
-  assert.ok(!L.canCapture(false, true, window, screens));
-  assert.ok(!L.canCapture(true, false, window, screens));
+function nativeWindow(address = 'a', x = 0) {
+  return { address, wayland: {}, workspace: { id: 1 }, monitor: { id: 0, name: 'DP-2' },
+    lastIpcObject: { mapped: true, hidden: false, monitor: 0, at: [x, 0], size: [800, 600] } };
+}
+const outputs = [{ id: 0, name: 'DP-2', x: 0, y: 0, width: 1600, height: 1000, scale: 1 }];
+test('native previews require visible session and the actual assigned monitor', () => {
+  const window = nativeWindow();
+  assert.ok(L.canCapture(true, true, window, outputs));
+  assert.ok(!L.canCapture(false, true, window, outputs));
+  assert.ok(!L.canCapture(true, false, window, outputs));
   assert.ok(!L.canCapture(true, true, window, []));
-  assert.ok(!L.canCapture(true, true, { ...window, workspace: { id: 1 } }, screens));
-  assert.ok(!L.canCapture(true, true, { ...window, wayland: null }, screens));
-  assert.ok(!L.canCapture(true, true, { ...window, lastIpcObject: { mapped: false } }, screens));
-  assert.ok(!L.canCapture(true, true, window, [{ name: 'DP-3', width: 1920, height: 1080 }]));
+  assert.ok(!L.canCapture(true, true, { ...window, monitor: null }, outputs));
+  assert.ok(!L.canCapture(true, true, { ...window, monitor: null, workspace: { id: 1, monitor: window.monitor } }, outputs));
+  assert.ok(!L.canCapture(true, true, { ...window, wayland: null }, outputs));
+  for (const changes of [{ mapped: false }, { mapped: undefined }, { monitor: -1 }, { hidden: true },
+    { size: [0, 600] }, { size: [Infinity, 600] }, { size: [10000, 10000] }]) {
+    assert.ok(!L.canCapture(true, true, { ...window, lastIpcObject: { ...window.lastIpcObject, ...changes } }, outputs));
+  }
   for (const name of ['', 'FALLBACK', 'FALLBACK-1', 'HEADLESS-1'])
     assert.deepEqual(L.previewScreens([{ name, width: 1920, height: 1080 }]), []);
   assert.deepEqual(L.previewScreens([{ name: 'DP-2', width: 0, height: 1000 }]), []);
-  const remote = [{ name: 'DP-3', width: 1920, height: 1080 }];
-  assert.ok(L.canCapture(true, true, { ...window, workspace: { id: 1, monitor: { name: 'DP-3' } } }, remote));
+});
+test('covered/other-workspace windows can be captured, but fully off-viewport ones cannot', () => {
+  const covered = nativeWindow(); covered.lastIpcObject.visible = false; covered.workspace.id = 2;
+  assert.ok(L.canCapture(true, true, covered, outputs));
+  assert.ok(L.canCapture(true, true, nativeWindow('partial', -400), outputs));
+  assert.equal(L.captureReason(nativeWindow('outside', -800), outputs), 'Off-screen preview unavailable');
+  assert.equal(L.captureReason(nativeWindow('outside', 1600), outputs), 'Off-screen preview unavailable');
+});
+test('capture planning deduplicates and bounds streams and estimated native pixels', () => {
+  const list = [nativeWindow('a'), nativeWindow('b', 800), nativeWindow('off', 3000)];
+  assert.deepEqual(L.capturePlan(list, ['b', 'b', 'missing'], outputs), ['b', 'a']);
+  assert.deepEqual(L.capturePlan(list, ['b'], outputs, 1), ['b']);
+  assert.deepEqual(L.capturePlan(list, ['b'], outputs, 32, 480000), ['b']);
+  assert.deepEqual(L.capturePlan(list, [], outputs, 0), []);
+});
+test('spatial order follows desktop positions, not pointer allocation order', () => {
+  const right = nativeWindow('a', 800), left = nativeWindow('z', 0);
+  assert.ok(L.spatialCompare(left, right) < 0);
 });
 test('settings validate types, ranges and stream caps without coercion', () => {
   const result = L.settings({ keepCache: 'false', dim: 999, liveLimit: 1000 });
   assert.equal(result.keepCache, true);
   assert.equal(result.dim, 80);
-  assert.equal(result.liveLimit, 6);
+  assert.equal(result.liveLimit, 0);
+  assert.equal(L.setting('liveLimit', 6), 6); // Preserve an existing user's cap.
   assert.equal(L.setting('keepCache', false), false);
   assert.equal(L.setting('dim', NaN), undefined);
   assert.equal(L.setting('command', 'anything'), undefined);

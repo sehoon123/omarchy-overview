@@ -36,25 +36,20 @@ Item {
       required property var modelData
       required property int index
       readonly property var sharedCapture: root.captureFor(modelData.address)
-      readonly property bool bitmapMode: !!sharedCapture && !!sharedCapture.imageSource
       readonly property var rect: root.miniLayout[index] || ({ x: 0, y: 0, width: 0, height: 0 })
       x: 8 + rect.x; y: 8 + rect.y; width: rect.width; height: rect.height
       color: "#cb282c37"
-      Image {
-        objectName: "desktopSnapshot"
+      Loader {
         anchors.fill: parent
-        source: tile.bitmapMode ? tile.sharedCapture.imageSource : ""
-        sourceSize: Qt.size(Math.max(1, Math.ceil(width * 2)), Math.max(1, Math.ceil(height * 2)))
-        fillMode: Image.PreserveAspectFit; cache: false; smooth: true
-        visible: tile.bitmapMode && status === Image.Ready
-      }
-      ShaderEffectSource {
-        anchors.fill: parent
-        sourceItem: !tile.bitmapMode && tile.sharedCapture ? tile.sharedCapture.image || null : null
-        hideSource: true
-        live: root.live && !!tile.sharedCapture && tile.sharedCapture.hasContent
-        smooth: true
-        visible: !tile.bitmapMode && !!tile.sharedCapture && tile.sharedCapture.hasContent
+        active: !!tile.sharedCapture && tile.sharedCapture.hasContent
+        sourceComponent: ShaderEffectSource {
+          objectName: "desktopTexture"
+          sourceItem: tile.sharedCapture ? tile.sharedCapture.image || null : null
+          textureSize: Qt.size(Math.max(1, Math.ceil(width * 2)), Math.max(1, Math.ceil(height * 2)))
+          hideSource: true
+          live: root.live && !!tile.sharedCapture && tile.sharedCapture.hasContent
+          smooth: true; mipmap: true
+        }
       }
     }
   }

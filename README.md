@@ -6,6 +6,15 @@ user service for fast reopening. No compositor plugin or packaged file changes.
 
 **[Installation](INSTALL.md)** · **[Architecture](ARCHITECTURE.md)** · **[Design research](RESEARCH.md)**
 
+> **Capture safety hold (2026-09-21):** window previews are currently disabled to
+> avoid a confirmed Hyprland 0.56.2 output-removal crash. Navigation still works.
+> The previously local-only guard is now tracked here. See the
+> [compositor patch, validation and activation instructions](integrations/hyprland/README.md).
+> Installing the patched package does not replace the running compositor or
+> automatically re-enable previews. Capture/cache descriptions below document
+> the underlying implementation; the safety hold takes precedence, and the
+> `keepCache` setting currently cannot enable hidden capture or retain frames.
+
 This repository contains the working implementation, tests, launcher and service.
 It does not include personal preferences, wallpapers, screenshots, desktop state
 or local backups. See INSTALL.md for compatibility requirements and setup.

@@ -8,7 +8,7 @@ FrameCache {
   required property var modelData
   readonly property var ipc: modelData && modelData.lastIpcObject ? modelData.lastIpcObject : ({})
   contentTag: modelData ? JSON.stringify([modelData.title || "", ipc.size || []]) : ""
-  captureSource: modelData && Logic.workspaceKey(modelData.workspace) ? modelData.wayland || null : null
+  captureSource: captureEnabled && modelData && Logic.workspaceKey(modelData.workspace) ? modelData.wayland || null : null
   readonly property real aspect: OverviewLayout.aspectFor(modelData, producer)
   x: -10000
   width: Math.min(1100, 1100 * aspect)

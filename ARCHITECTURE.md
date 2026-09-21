@@ -1,5 +1,11 @@
 # Overview architecture
 
+> **2026-09-21 safety hold:** the capture pipeline below is gated off by
+> `windowCaptureEnabled: false`. Hidden sampling has also been removed and
+> producers release their captures while hidden. The old retention preference
+> cannot bypass these guards. See [the compositor fix](integrations/hyprland/README.md)
+> for the root-cause patch and verification limits. Navigation remains active.
+
 ## Ownership
 
 ```

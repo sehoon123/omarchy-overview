@@ -48,6 +48,16 @@ ShellRoot {
   readonly property bool preparing: previews.busy
   // Eager subscriptions make opening independent of CLI context probes.
   readonly property var observedMonitors: Hyprland.monitors.values
+  // Hyprland 0.56.2 crashes on window capture while that window has no monitor.
+  // Client-side hotplug guards cannot close that race. Keep thumbnails disabled
+  // until a compositor-side fix is installed and validated. Window actions work.
+  readonly property bool windowCaptureEnabled: false
+  // Additional safeguards for eventual re-enablement: no hidden capture, and
+  // wait after output transitions before creating any window capture session.
+  readonly property var previewScreens: Logic.previewScreens(Quickshell.screens)
+  readonly property string previewTopology: JSON.stringify(previewScreens.map(s => [s.name, s.width, s.height]))
+  property bool captureTopologyReady: false
+  onPreviewTopologyChanged: pauseCaptures()
   readonly property var focusedWindow: Logic.focusedWindow(Hyprland.activeToplevel, Hyprland.toplevels.values)
   onFocusedWindowChanged: if (openCount > 0) focusedChanged()
   readonly property color accent: preferences.values.followTheme ? themeColors.accent : "#76b5ff"
@@ -81,6 +91,7 @@ ShellRoot {
   }
 
   Component.onCompleted: {
+    pauseCaptures()
     displayName = Quickshell.env("OVERVIEW_INITIAL_MONITOR") || (Hyprland.focusedMonitor ? Hyprland.focusedMonitor.name : "")
     const initialDesktop = Quickshell.env("OVERVIEW_INITIAL_WORKSPACE") || ""
     filterWorkspace = initialDesktop.startsWith("name:") ? initialDesktop : Number(initialDesktop) > 0 ? Number(initialDesktop) : Logic.workspaceKey(Hyprland.focusedWorkspace) || 1
@@ -94,6 +105,10 @@ ShellRoot {
     }
   }
 
+  function pauseCaptures() {
+    captureTopologyReady = false
+    captureSettle.restart()
+  }
   function aspectFor(w) { return OverviewLayout.aspectFor(w, captureFor(w.address)) }
   function captureFor(address) { return captureBank.lookup(address) }
   function openOverview(mode) {
@@ -190,12 +205,6 @@ ShellRoot {
     else if (action.kind === "click") clicked(action.zone)
   }
   function focusedChanged() {
-    if (!shown) {
-      const previous = captureFor(lastFocusedAddress)
-      if (previous) previous.invalidate()
-      const current = focusedWindow ? captureFor(focusedWindow.address) : null
-      if (current) current.refresh(false)
-    }
     lastFocusedAddress = focusedWindow ? focusedWindow.address : ""
   }
   function deferForCapture(action) {
@@ -369,6 +378,8 @@ ShellRoot {
   Connections {
     target: Hyprland
     function onRawEvent(event) {
+      if (["monitoradded", "monitoraddedv2", "monitorremoved", "monitorremovedv2", "configreloaded"].includes(event.name))
+        root.pauseCaptures()
       if (["createworkspace", "destroyworkspace", "moveworkspace", "renameworkspace", "monitoradded", "monitorremoved", "configreloaded"].includes(event.name))
         stateRefresh.restart()
       if (["movewindow", "movewindowv2"].includes(event.name)) Hyprland.refreshToplevels()
@@ -383,13 +394,13 @@ ShellRoot {
   PreviewScheduler {
     id: previews
     bank: captureBank; backend: bridge; windows: root.windows
-    shown: root.shown
+    shown: root.windowCaptureEnabled && root.shown && root.captureTopologyReady
     // The focused monitor may change while this panel remains on its original
     // screen. Never prime an uncovered display after the pointer crosses over.
     covered: root.framePresented && root.coverSettled && !!panel.screen && !!Hyprland.focusedMonitor &&
       panel.screen.name === Hyprland.focusedMonitor.name
     foregroundBusy: root.busy
-    suspended: root.closeWhenDone || !!root.pendingUiAction || input.dragging || !!input.pressedZone ||
+    suspended: !root.windowCaptureEnabled || !root.captureTopologyReady || root.closeWhenDone || !!root.pendingUiAction || input.dragging || !!input.pressedZone ||
       root.settingsShown || search.settling || search.input.inputMethodComposing
     workspace: Hyprland.focusedWorkspace ? Hyprland.focusedWorkspace.id : 0
     monitor: Hyprland.focusedMonitor ? Hyprland.focusedMonitor.id : -1
@@ -409,16 +420,12 @@ ShellRoot {
   }
   Timer { id: coverTimer; interval: 250; onTriggered: root.coverSettled = root.shown }
   Timer { id: toastTimer; interval: 6500; onTriggered: root.message = "" }
-  // Only the naturally active application is sampled while hidden. No viewport
-  // movement, and no sampling while a lock/other exclusive layer owns focus.
+  // No hidden/background capture, even if the old keepCache preference is set.
+  // The confirmed last-output crash came from the resident Overview client.
   Timer {
-    interval: 400; repeat: true
-    running: preferences.values.keepCache && !root.shown && root.openCount > 0 && !!root.focusedWindow &&
-      !!root.focusedWindow.wayland && root.focusedWindow.wayland.activated
-    onTriggered: {
-      const source = root.captureFor(root.focusedWindow.address)
-      if (source) source.refresh(false)
-    }
+    id: captureSettle
+    interval: 1000
+    onTriggered: root.captureTopologyReady = root.previewScreens.length > 0
   }
   FileView {
     path: root.stateHome + "/omarchy/current/background"
@@ -488,6 +495,9 @@ ShellRoot {
         settingsShown: root.settingsShown, settings: preferences.values, settingsError: preferences.error,
         liveAddresses: captureBank.live ? captureBank.liveAddresses : [], delegateCount: windowRepeater.count,
         cachedFrames: Object.values(captureBank.entries).filter(e => e && e.hasFrame).length,
+        windowCaptureEnabled: root.windowCaptureEnabled,
+        captureTopologyReady: root.captureTopologyReady,
+        captureViews: Object.values(captureBank.entries).filter(e => e && (e.front || e.pending)).length,
         accent: String(root.accent), composing: search.input.inputMethodComposing, searchFocused: search.input.activeFocus,
         preparing: root.preparing, primed: Object.keys(previews.attempted), openCount: root.openCount,
         firstFrameMs: root.firstFrameMs, workerPid: bridge.processId, workerRestarts: bridge.restarts,
@@ -499,8 +509,8 @@ ShellRoot {
 
   PanelWindow {
     id: panel
-    visible: root.shown
-    screen: Quickshell.screens.find(s => s.name === root.displayName) || Quickshell.screens[0]
+    visible: root.shown && root.previewScreens.length > 0
+    screen: root.previewScreens.find(s => s.name === root.displayName) || root.previewScreens[0] || null
     anchors { top: true; bottom: true; left: true; right: true }
     exclusionMode: ExclusionMode.Ignore
     WlrLayershell.layer: WlrLayer.Overlay
@@ -520,14 +530,14 @@ ShellRoot {
       anchors.fill: parent; focus: true
       CaptureBank {
         id: captureBank
-        model: Hyprland.toplevels; live: root.shown
+        model: Hyprland.toplevels; live: root.windowCaptureEnabled && root.shown && root.captureTopologyReady
         liveAddresses: Logic.liveAddresses(root.previewAddress ? [] : root.windows,
           [root.previewAddress, root.dragSource ? root.dragSource.address : "", root.windows[root.selected] ? root.windows[root.selected].address : ""],
           preferences.values.liveLimit)
         factory: Component {
           CaptureProducer {
-            live: captureBank.wantsLive(modelData.address)
-            captureEnabled: root.shown || (preferences.ready && preferences.values.keepCache)
+            live: captureEnabled && captureBank.wantsLive(modelData.address)
+            captureEnabled: root.windowCaptureEnabled && Logic.canCapture(root.shown, root.captureTopologyReady, modelData, root.previewScreens)
           }
         }
       }

@@ -67,6 +67,23 @@ test('live budget deduplicates and always prioritizes preview/drag/selection', (
   assert.deepEqual(L.liveAddresses(windows, ['drag', 'b'], 6), ['drag', 'b', 'a']);
   assert.deepEqual(L.liveAddresses([], ['a', '', 'a'], 6), ['a']);
 });
+test('previews never capture hidden, unsettled, unassigned or placeholder-only windows', () => {
+  const screens = [{ name: 'DP-2', width: 1600, height: 1000 }];
+  const window = { wayland: {}, workspace: { id: 1, monitor: { name: 'DP-2' } } };
+  assert.ok(L.canCapture(true, true, window, screens));
+  assert.ok(!L.canCapture(false, true, window, screens));
+  assert.ok(!L.canCapture(true, false, window, screens));
+  assert.ok(!L.canCapture(true, true, window, []));
+  assert.ok(!L.canCapture(true, true, { ...window, workspace: { id: 1 } }, screens));
+  assert.ok(!L.canCapture(true, true, { ...window, wayland: null }, screens));
+  assert.ok(!L.canCapture(true, true, { ...window, lastIpcObject: { mapped: false } }, screens));
+  assert.ok(!L.canCapture(true, true, window, [{ name: 'DP-3', width: 1920, height: 1080 }]));
+  for (const name of ['', 'FALLBACK', 'FALLBACK-1', 'HEADLESS-1'])
+    assert.deepEqual(L.previewScreens([{ name, width: 1920, height: 1080 }]), []);
+  assert.deepEqual(L.previewScreens([{ name: 'DP-2', width: 0, height: 1000 }]), []);
+  const remote = [{ name: 'DP-3', width: 1920, height: 1080 }];
+  assert.ok(L.canCapture(true, true, { ...window, workspace: { id: 1, monitor: { name: 'DP-3' } } }, remote));
+});
 test('settings validate types, ranges and stream caps without coercion', () => {
   const result = L.settings({ keepCache: 'false', dim: 999, liveLimit: 1000 });
   assert.equal(result.keepCache, true);

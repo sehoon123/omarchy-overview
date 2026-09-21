@@ -44,6 +44,18 @@ function revealOffset(offset, viewportWidth, contentWidth, start, itemWidth, mar
 function liveAddresses(windows, priority, limit) {
   return priority.concat(windows.map(w => w.address)).filter((a, i, list) => a && list.indexOf(a) === i).slice(0, limit);
 }
+// Qt creates an unnamed placeholder when the last Wayland output disappears.
+// Neither it nor Hyprland's emergency fallback is a safe preview destination.
+function previewScreens(screens) {
+  return screens.filter(s => s && s.name && s.width > 0 && s.height > 0 &&
+    !/^(HEADLESS-|FALLBACK)/.test(s.name));
+}
+function canCapture(shown, settled, window, screens) {
+  if (!shown || !settled || !window || !window.wayland || !workspaceKey(window.workspace)) return false;
+  if (window.lastIpcObject && window.lastIpcObject.mapped === false) return false;
+  const monitor = window.workspace.monitor;
+  return !!monitor && previewScreens(screens).some(s => s.name === monitor.name);
+}
 function defaults() {
   return { followTheme: true, blur: true, dim: 40, motion: true,
     liveLimit: 6, keepCache: true, monitorOnly: false };
@@ -76,4 +88,4 @@ function palette(text) {
   }
   return colors;
 }
-if (typeof module !== "undefined") module.exports = { normalize, workspaceKey, workspaceKeys, matches, focusedWindow, selectionIndex, revealOffset, liveAddresses, defaults, setting, settings, palette };
+if (typeof module !== "undefined") module.exports = { normalize, workspaceKey, workspaceKeys, matches, focusedWindow, selectionIndex, revealOffset, liveAddresses, previewScreens, canCapture, defaults, setting, settings, palette };

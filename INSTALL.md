@@ -4,6 +4,15 @@ This is a standalone, user-owned Overview for **Omarchy's Lua-based Hyprland**,
 not an in-process Omarchy Shell plugin. The runtime code is a snapshot of the
 working desktop implementation.
 
+## Capture safety hold
+
+Window capture is deliberately disabled in this revision. Stock Hyprland 0.56.2
+has a confirmed monitor-lifetime defect; the Overview's client-side guards alone
+cannot fix it. See [the local compositor patch](integrations/hyprland/README.md)
+for its separate package, tests, activation checks and rollback. Keep capture
+disabled until the patched compositor is actually running and validated.
+Installing/restarting Overview alone does not activate the compositor patch.
+
 ## Requirements
 
 - An active Omarchy/Wayland session and systemd user services.

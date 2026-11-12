@@ -559,15 +559,14 @@ ShellRoot {
     // retried here instead of dead-ending the open.
     onReadyToBegin: if (root.opening) root.checkOpeningContext()
     onCompleted: result => {
-      const outputs = result ? Logic.listOf(result.outputs) : null
-      const ok = !!result && !!result.ok && !!outputs
-      const verdict = Logic.guardVerdict({ purpose: root.guardPurpose, ok: ok,
-        reason: ok ? "" : (result ? result.reason : ""), opening: root.opening, shown: root.shown,
+      const guard = Logic.guardResult(result)
+      const verdict = Logic.guardVerdict({ purpose: root.guardPurpose, ok: guard.ok,
+        reason: guard.reason, opening: root.opening, shown: root.shown,
         closing: root.closing, shutdownRequested: root.shutdownRequested })
       root.guardPurpose = ""
       if (verdict.action === "ignore") return
       if (verdict.action === "fail") { root.pendingWindow = null; root.failOpen(verdict.reason); return }
-      root.allowedOutputs = outputs
+      root.allowedOutputs = guard.outputs
       root.contextAllowed = true
       if (verdict.action === "present") root.presentOverview()
     }

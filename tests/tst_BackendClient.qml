@@ -1,6 +1,7 @@
 import QtQuick
 import QtTest
 import ".."
+import "../OverviewLogic.js" as Logic
 
 // Worker-protocol coverage. This file NEVER instantiates BackendClient: that
 // component roots a Process running `python3 -u worker.py`, and a worker request
@@ -140,6 +141,16 @@ Item {
       const second = client.request(["state"], {}, "")
       compare(second, first + 1)
       compare(writes.count, 2)
+    }
+    // The desktop order is a list that crosses completed(var); shell.qml reads it
+    // through Logic.listOf because Qt 6.12 wraps it (Array.isArray is false).
+    function test_desktopOrderSurvivesTheSignalBoundary() {
+      client.receive(harness.handshake)
+      const id = client.request(["state"], {}, "")
+      client.receive(harness.reply(id, { order: [1, 2, 11, 12] }))
+      compare(finished.count, 1)
+      const order = Logic.listOf(finished.signalArguments[0][1].order)
+      verify(order !== null); compare(order.length, 4); compare(order[2], 11)
     }
     // A late, duplicate, unknown or id-0 line can never complete a ticket that it
     // does not belong to - including the next one.

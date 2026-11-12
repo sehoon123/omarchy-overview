@@ -546,6 +546,18 @@ function listOf(value) {
   if (!value || typeof value !== "object" || !Number.isInteger(value.length) || value.length < 0) return null;
   return Array.prototype.slice.call(value);
 }
+// The one reading of capture_context.py's verdict. A reply that says ok but whose
+// outputs are not a list is a shape drift, not a helper failure, and names itself
+// so a boundary change cannot hide behind a generic refusal.
+function guardResult(result) {
+  const shape = 'Capture context reply has an unexpected shape';
+  if (!result || typeof result !== 'object') return { ok: false, outputs: null, reason: shape };
+  if (result.ok !== true)
+    return { ok: false, outputs: null,
+      reason: typeof result.reason === 'string' && result.reason ? result.reason : 'Capture context unavailable' };
+  const outputs = listOf(result.outputs);
+  return outputs ? { ok: true, outputs: outputs, reason: '' } : { ok: false, outputs: null, reason: shape };
+}
 // Only the three public scalar palette tokens we need, not a general TOML parser.
 // Section-scoped keys, expressions, URLs and malformed values are never evaluated.
 function palette(text) {
@@ -558,4 +570,4 @@ function palette(text) {
   }
   return colors;
 }
-if (typeof module !== "undefined") module.exports = { normalize, workspaceKey, workspaceKeys, matches, focusedWindow, spatialCompare, selectionIndex, revealOffset, liveAddresses, liveSelection, previewScreens, captureReason, canCapture, previewReason, capturePlan, capturePlanHold, defaults, setting, settings, openBlocked, closeMode, shutdownReady, captureEnabled, settleOutcome, presentBlocked, contextRefusal, recheckAllowed, guardVerdict, openFailure, failureNotice, shutdownBlocker, activationHandoff, closeVerdict, refreshAction, ipcGuard, selectionAnchor, desktopSlot, reselectDesktop, stageMessage, activationTarget, keyIntent, zoneVisible, clipZone, hitZone, delegateAddress, hittableZone, statusCard, statusPayload, palette, listOf };
+if (typeof module !== "undefined") module.exports = { normalize, workspaceKey, workspaceKeys, matches, focusedWindow, spatialCompare, selectionIndex, revealOffset, liveAddresses, liveSelection, previewScreens, captureReason, canCapture, previewReason, capturePlan, capturePlanHold, defaults, setting, settings, openBlocked, closeMode, shutdownReady, captureEnabled, settleOutcome, presentBlocked, contextRefusal, recheckAllowed, guardVerdict, openFailure, failureNotice, guardResult, shutdownBlocker, activationHandoff, closeVerdict, refreshAction, ipcGuard, selectionAnchor, desktopSlot, reselectDesktop, stageMessage, activationTarget, keyIntent, zoneVisible, clipZone, hitZone, delegateAddress, hittableZone, statusCard, statusPayload, palette, listOf };

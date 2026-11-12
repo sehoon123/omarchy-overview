@@ -1358,3 +1358,16 @@ test('a refusal is toasted while the panel is shown, notified while hidden, and 
   // A clock that stepped back must not silence reports until it catches up.
   assert.deepEqual(L.failureNotice({ ...again, lastAt: base.now + 5000 }), { action: 'notify' });
 });
+
+test('the helper verdict is read once; a bad shape names itself and helper failures keep their reason', () => {
+  const shape = 'Capture context reply has an unexpected shape';
+  const outputs = [{ name: 'DP-2', id: 0, scale: 1.6, x: 0, y: 0, width: 1600, height: 1000 }];
+  assert.deepEqual(L.guardResult({ ok: true, outputs }), { ok: true, outputs, reason: '' });
+  assert.deepEqual(L.guardResult({ ok: true, outputs: { length: 1, 0: outputs[0] } }).outputs, outputs);
+  assert.deepEqual(L.guardResult({ ok: false, reason: 'Display state unavailable' }),
+    { ok: false, outputs: null, reason: 'Display state unavailable' });
+  for (const bad of [{ ok: false }, { ok: false, reason: '' }, { ok: false, reason: { x: 1 } }, { ok: 'yes' }])
+    assert.equal(L.guardResult(bad).reason, 'Capture context unavailable');
+  for (const bad of [null, undefined, 'ok', 3, { ok: true }, { ok: true, outputs: 'DP-2' }, { ok: true, outputs: {} }])
+    assert.deepEqual(L.guardResult(bad), { ok: false, outputs: null, reason: shape });
+});

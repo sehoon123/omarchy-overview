@@ -1,6 +1,7 @@
 import QtQuick
 import QtTest
 import ".."
+import "../OverviewLogic.js" as Logic
 
 // Bare OpenRequest only: OpenGuard roots a Process that runs capture_context.py,
 // so it is never instantiated here. receive()/processExited() are driven
@@ -10,6 +11,11 @@ Item {
   readonly property string goodReply: '{"ok":true,"outputs":["DP-2"],"frames":[]}'
   property bool pendingWhenStopped: true
   property int completionsWhenStopped: -1
+  property var handled: null
+  // capture_context.py's real reply: output objects, not names (see check()).
+  readonly property string helperReply: JSON.stringify({ ok: true, outputs: [
+    { name: "DP-2", id: 0, scale: 1.6, x: 0, y: 0, width: 1600, height: 1000 },
+    { name: "HDMI-A-1", id: 1, scale: 1, x: 1600, y: 0, width: 1920, height: 1080 }] })
   OpenRequest { id: client }
   // A second guard keeps the wedged-helper timings off the shared instance.
   OpenRequest { id: wedged }
@@ -29,12 +35,18 @@ Item {
       harness.completionsWhenStopped = finished.count
     }
   }
+  // What shell.qml's handler sees: the signal's own argument, not a spy's copy.
+  Connections {
+    target: client
+    function onCompleted(result) { harness.handled = Logic.guardResult(result) }
+  }
   TestCase {
     name: "OpeningGuardRequest"; when: windowShown
     function init() {
       client.cancel(); client.processExited(); client.timeoutMs = 1000
       wedged.cancel(); wedged.processExited()
       harness.pendingWhenStopped = true; harness.completionsWhenStopped = -1
+      harness.handled = null
       finished.clear(); started.clear(); stopped.clear(); ready.clear()
       wedgedFinished.clear(); wedgedStarted.clear(); wedgedStopped.clear(); wedgedReady.clear()
     }
@@ -132,6 +144,25 @@ Item {
       client.receive(line)
       client.processExited(0, 0)
       compare(finished.count, 1); compare(finished.signalArguments[0][0].ok, true)
+    }
+    // Qt 6.12 hands a list that crossed this signal over as a sequence wrapper for
+    // which Array.isArray() is false; guardResult() must still read it.
+    function test_helperReplyOutputsSurviveTheSignalBoundary() {
+      verify(client.begin("DP-2"))
+      client.receive(harness.helperReply); client.processExited(0, 0)
+      compare(finished.count, 1)
+      const seen = Logic.guardResult(finished.signalArguments[0][0])
+      compare(seen.ok, true); compare(seen.outputs.length, 2)
+      compare(seen.outputs[1].name, "HDMI-A-1")
+      verify(Array.isArray(seen.outputs))
+      compare(harness.handled.ok, true); compare(harness.handled.outputs.length, 2)
+    }
+    function test_aReplyWithoutAnOutputListIsAShapeDriftNotAHelperFailure() {
+      verify(client.begin("DP-2"))
+      client.receive('{"ok":true,"outputs":{"DP-2":0}}'); client.processExited(0, 0)
+      compare(Logic.guardResult(finished.signalArguments[0][0]).reason,
+        "Capture context reply has an unexpected shape")
+      compare(harness.handled.ok, false)
     }
     function test_aLineWithNoRequestInFlightIsDropped() {
       client.receive(harness.goodReply)

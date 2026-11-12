@@ -9,10 +9,11 @@ refuses, but it no longer claims the session is locked (AUDIT F-52).
 
 Reasons are distinguishable on purpose — `shell.qml` shows them verbatim:
   * "Display state unavailable"          — the reply's shape is not a display list
-  * "Display state could not be verified" — a field this check needs is unreadable
+  * "Display state could not be verified (<field>)" — a field this check needs is unreadable
   * "Session locked or lock state unavailable" — Hyprland reports LOCK
   * "Authentication or lock dialog is open"    — a lock/auth layer on any output
-  * "Selected display is unavailable"    — the requested output is not usable
+  * "Selected display is unavailable [(<field>)]" — the requested output is
+    missing, or present with the named field unusable
   * the transport's own bounded message  — Hyprland unreachable/late/unreadable
 
 Worst case is two read-only queries, each with its own 0.3 s wall-clock budget
@@ -43,8 +44,8 @@ def whole(value):
     return isinstance(value, int) and not isinstance(value, bool)
 
 
-def usable(monitor):
-    """Can this output be described to the shell exactly, or not at all?
+def unusable_field(monitor):
+    """The first field that keeps this output from being described exactly, or ''.
 
     `id` is required because `OverviewLogic.captureReason()` matches the helper's
     outputs on name **and** id: an output emitted with `id: null` matches nothing
@@ -52,12 +53,15 @@ def usable(monitor):
     """
     name = monitor.get('name')
     transform = monitor.get('transform', 0)
-    return (isinstance(name, str) and bool(name) and not name.startswith(('HEADLESS-', 'FALLBACK'))
-            and not monitor.get('disabled') and bool(monitor.get('dpmsStatus'))
-            and whole(monitor.get('id')) and whole(transform) and transform in TRANSFORMS
-            and all(number(v) and v > 0 for v in [monitor.get('scale', 0),
-                                                  monitor.get('width', 0), monitor.get('height', 0)])
-            and all(number(monitor.get(axis)) for axis in ('x', 'y')))
+    checks = (('name', isinstance(name, str) and bool(name) and not name.startswith(('HEADLESS-', 'FALLBACK'))),
+              ('disabled', not monitor.get('disabled')),
+              ('dpmsStatus', bool(monitor.get('dpmsStatus'))),
+              ('id', whole(monitor.get('id'))),
+              ('transform', whole(transform) and transform in TRANSFORMS),
+              *((field, number(monitor.get(field, 0)) and monitor.get(field, 0) > 0)
+                for field in ('scale', 'width', 'height')),
+              *((axis, number(monitor.get(axis))) for axis in ('x', 'y')))
+    return next((field for field, ok in checks if not ok), '')
 
 
 def blocked(monitor):
@@ -70,11 +74,11 @@ def blocked(monitor):
         blockers = []
     if not isinstance(blockers, list) or not all(isinstance(value, str) for value in blockers):
         # Still fail closed, but do not call an unreadable field a locked session.
-        return 'Display state could not be verified'
+        return 'Display state could not be verified (solitaryBlockedBy)'
     if 'LOCK' in blockers:
         return 'Session locked or lock state unavailable'
     # Hyprland's direct-scanout diagnostic, not a lock API: refuse, do not diagnose.
-    return 'Display state could not be verified' if 'WORKSPACE' in blockers else ''
+    return 'Display state could not be verified (solitaryBlockedBy WORKSPACE)' if 'WORKSPACE' in blockers else ''
 
 
 def lock_layer(layers):
@@ -82,16 +86,16 @@ def lock_layer(layers):
     cannot be read — an unreadable layer list must never read as "no lock"."""
     for output in layers.values():
         if not isinstance(output, dict):
-            return 'Display state could not be verified'
+            return 'Display state could not be verified (layers)'
         levels = output.get('levels', {})
         if not isinstance(levels, dict):
-            return 'Display state could not be verified'
+            return 'Display state could not be verified (layers)'
         for level in levels.values():
             if not isinstance(level, list):
-                return 'Display state could not be verified'
+                return 'Display state could not be verified (layers)'
             for layer in level:
                 if not isinstance(layer, dict) or not isinstance(layer.get('namespace', ''), str):
-                    return 'Display state could not be verified'
+                    return 'Display state could not be verified (layers)'
                 alpha = layer.get('alpha', 1)
                 # An alpha this check cannot read counts as opaque, never as hidden.
                 if number(alpha) and alpha <= .001:
@@ -104,14 +108,17 @@ def lock_layer(layers):
 def check(monitors, layers, name):
     if not isinstance(monitors, list) or not monitors or not isinstance(layers, dict):
         return refuse('Display state unavailable')
-    outputs = []
+    outputs, unusable = [], ''
     for monitor in monitors:
         if not isinstance(monitor, dict):
             return refuse('Display state unavailable')
         lock = blocked(monitor)
         if lock:
             return refuse(lock)
-        if not usable(monitor):
+        field = unusable_field(monitor)
+        if field:
+            if monitor.get('name') == name:
+                unusable = field
             continue
         # Hyprland reports x/y logically and width/height physically; rotation is
         # applied before the scale division (2560x1600 @1.6 -> 1600x1000).
@@ -125,7 +132,7 @@ def check(monitors, layers, name):
     if lock:
         return refuse(lock)
     if not any(output['name'] == name for output in outputs):
-        return refuse('Selected display is unavailable')
+        return refuse('Selected display is unavailable' + (f' ({unusable})' if unusable else ''))
     return {'ok': True, 'outputs': outputs}
 
 

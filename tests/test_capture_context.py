@@ -88,6 +88,55 @@ class CaptureContextTests(unittest.TestCase):
         self.assertEqual([monitors, layers], before)
 
 
+FIXTURE = os.path.join(os.path.dirname(__file__), 'fixtures', 'hyprland-0.56.2-monitors.json')
+
+
+def live_monitors():
+    """`hyprctl -j monitors` from Hyprland 0.56.2, identifiers removed, types kept.
+
+    DP-1 shows a fullscreen game: `solitary` is a window address and
+    `solitaryBlockedBy` is null.
+    """
+    with open(FIXTURE, encoding='utf-8') as source:
+        return json.load(source)
+
+
+class LiveShapeTests(unittest.TestCase):
+    def test_the_recorded_compositor_reply_opens_on_every_display(self):
+        for name in ('DP-1', 'DP-2'):
+            with self.subTest(name=name):
+                result = C.check(live_monitors(), {}, name)
+                self.assertTrue(result['ok'], result)
+                self.assertEqual(sorted(output['name'] for output in result['outputs']), ['DP-1', 'DP-2'])
+
+    def test_each_refusal_names_the_field_that_failed(self):
+        cases = {
+            'solitaryBlockedBy': ({'solitaryBlockedBy': 'LOCK'}, 'Display state could not be verified (solitaryBlockedBy)'),
+            'id': ({'id': None}, 'Selected display is unavailable (id)'),
+            'transform': ({'transform': 9}, 'Selected display is unavailable (transform)'),
+            'scale': ({'scale': 0}, 'Selected display is unavailable (scale)'),
+            'dpmsStatus': ({'dpmsStatus': False}, 'Selected display is unavailable (dpmsStatus)'),
+            'x': ({'x': None}, 'Selected display is unavailable (x)'),
+        }
+        for field, (change, reason) in cases.items():
+            with self.subTest(field=field):
+                monitors = live_monitors()
+                monitors[0].update(change)
+                self.assertEqual(C.check(monitors, {}, monitors[0]['name']), {'ok': False, 'reason': reason})
+        self.assertEqual(C.check(live_monitors(), {'DP-1': []}, 'DP-1'),
+                         {'ok': False, 'reason': 'Display state could not be verified (layers)'})
+
+    def test_a_missing_display_is_not_blamed_on_a_field(self):
+        self.assertEqual(C.check(live_monitors(), {}, 'HDMI-A-9'),
+                         {'ok': False, 'reason': 'Selected display is unavailable'})
+
+    def test_an_unusable_other_display_does_not_name_a_field_for_the_selected_one(self):
+        monitors = live_monitors()
+        monitors[1]['id'] = None
+        result = C.check(monitors, {}, monitors[0]['name'])
+        self.assertTrue(result['ok'])
+
+
 class FieldTypeTests(unittest.TestCase):
     """Unexpected types fail closed inside check(), not as a traceback in main()."""
 
@@ -127,7 +176,7 @@ class FieldTypeTests(unittest.TestCase):
                        layer_stack(namespace=['hyprlock']), layer_stack(namespace=3)):
             with self.subTest(layers=layers):
                 result = C.check([monitor()], layers, 'TEST')
-                self.assertEqual(result, {'ok': False, 'reason': 'Display state could not be verified'})
+                self.assertEqual(result, {'ok': False, 'reason': 'Display state could not be verified (layers)'})
 
     def test_a_lock_layer_with_unreadable_alpha_still_blocks_the_open(self):
         for alpha in ('x', None, [0], float('nan'), True):
@@ -140,17 +189,21 @@ class FieldTypeTests(unittest.TestCase):
     def test_unreadable_lock_state_is_not_reported_as_a_locked_session(self):
         self.assertEqual(C.check([monitor(solitaryBlockedBy=['LOCK'])], {}, 'TEST'),
                          {'ok': False, 'reason': 'Session locked or lock state unavailable'})
-        for blockers in (['WORKSPACE'], ['WINDOWED', 'WORKSPACE'], None, 'LOCK', [3], {'LOCK': True}):
+        for blockers in (['WORKSPACE'], ['WINDOWED', 'WORKSPACE']):
             with self.subTest(blockers=blockers):
                 self.assertEqual(C.check([monitor(solitaryBlockedBy=blockers)], {}, 'TEST'),
-                                 {'ok': False, 'reason': 'Display state could not be verified'})
+                                 {'ok': False, 'reason': 'Display state could not be verified (solitaryBlockedBy WORKSPACE)'})
+        for blockers in (None, 'LOCK', [3], {'LOCK': True}):
+            with self.subTest(blockers=blockers):
+                self.assertEqual(C.check([monitor(solitaryBlockedBy=blockers)], {}, 'TEST'),
+                                 {'ok': False, 'reason': 'Display state could not be verified (solitaryBlockedBy)'})
         self.assertEqual(C.check([without('solitaryBlockedBy')], {}, 'TEST'),
-                         {'ok': False, 'reason': 'Display state could not be verified'})
+                         {'ok': False, 'reason': 'Display state could not be verified (solitaryBlockedBy)'})
         # A null list is only accepted alongside a solitary window address.
         for solitary in ('0', '', None, 3):
             with self.subTest(solitary=solitary):
                 self.assertEqual(C.check([monitor(solitaryBlockedBy=None, solitary=solitary)], {}, 'TEST'),
-                                 {'ok': False, 'reason': 'Display state could not be verified'})
+                                 {'ok': False, 'reason': 'Display state could not be verified (solitaryBlockedBy)'})
         # The live direct-scanout values are not a lock and never were.
         self.assertTrue(C.check([monitor(solitaryBlockedBy=['WINDOWED', 'CANDIDATE'])], {}, 'TEST')['ok'])
 

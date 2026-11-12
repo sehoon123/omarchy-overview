@@ -38,7 +38,7 @@ case "${1:-}" in
     fi
     # Bounded: the controller already refuses a contended action lock within
     # 1.5 s, and this ceiling keeps a held keybinding from stacking processes.
-    exec timeout 3 python3 "$config/controller.py" step "$direction" ;;
+    exec timeout 3 /usr/bin/python3 "$config/controller.py" step "$direction" ;;
   --app) mode=app ;;
   "") ;;
   *) echo 'Usage: omarchy-overview [--app|--next|--previous|--shutdown]' >&2; exit 2 ;;

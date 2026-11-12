@@ -69,6 +69,12 @@ quickshell ipc -p ~/.config/omarchy/overview call overview status
 omarchy-overview
 ```
 
+If an open is refused, a desktop notification titled **Overview could not
+open** gives the reason, and the same reason is in `previewError` in `status`.
+A repeated identical reason within 10 seconds is shown once. A reason ending in
+a field name in parentheses, such as `(solitaryBlockedBy)`, names the compositor
+field that changed shape.
+
 Expected status while **hidden**:
 
 - `captureBackend`: `native-window`

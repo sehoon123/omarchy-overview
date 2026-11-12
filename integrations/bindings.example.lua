@@ -6,10 +6,12 @@
 -- The launcher accepts: no argument (toggle), --app, --next, --previous and
 -- --shutdown. Do NOT bind --shutdown: it is the user service's ExecStop.
 
--- Physical backtick key above Tab on the tested keyboard.
+-- Physical backtick key above Tab on the tested keyboard. Omarchy 4.5 binds the
+-- same key (as SUPER + grave) to its Quake console; without the unbind both run.
+hl.unbind("SUPER + grave")
 o.bind("SUPER + code:49", "Toggle window overview", "omarchy-overview")
--- CTRL + UP/DOWN mirror macOS Mission Control. Both override Omarchy defaults,
--- so unbind those first if you keep them.
+-- CTRL + UP/DOWN mirror macOS Mission Control. Omarchy 4.5 binds neither, but
+-- check `hyprctl binds` for your own bindings on them first.
 o.bind("CTRL + UP", "Mission Control", "omarchy-overview")
 o.bind("CTRL + DOWN", "App Expose", "omarchy-overview --app")
 

@@ -527,6 +527,14 @@ function statusPayload(state, cards) {
     layout: state.layout,
     zones: state.zones.map(z => ({ kind: z.kind, id: z.id, address: z.address, x: z.x, y: z.y, width: z.width, height: z.height })) };
 }
+// A list that crossed a QML `var` signal may arrive as a sequence wrapper for
+// which Array.isArray() is false (Qt 6.12); copy it into a real array.
+// Anything that is not an indexable list is still rejected.
+function listOf(value) {
+  if (Array.isArray(value)) return value;
+  if (!value || typeof value !== "object" || !Number.isInteger(value.length) || value.length < 0) return null;
+  return Array.prototype.slice.call(value);
+}
 // Only the three public scalar palette tokens we need, not a general TOML parser.
 // Section-scoped keys, expressions, URLs and malformed values are never evaluated.
 function palette(text) {
@@ -539,4 +547,4 @@ function palette(text) {
   }
   return colors;
 }
-if (typeof module !== "undefined") module.exports = { normalize, workspaceKey, workspaceKeys, matches, focusedWindow, spatialCompare, selectionIndex, revealOffset, liveAddresses, liveSelection, previewScreens, captureReason, canCapture, previewReason, capturePlan, capturePlanHold, defaults, setting, settings, openBlocked, closeMode, shutdownReady, captureEnabled, settleOutcome, presentBlocked, contextRefusal, recheckAllowed, guardVerdict, openFailure, shutdownBlocker, activationHandoff, closeVerdict, refreshAction, ipcGuard, selectionAnchor, desktopSlot, reselectDesktop, stageMessage, activationTarget, keyIntent, zoneVisible, clipZone, hitZone, delegateAddress, hittableZone, statusCard, statusPayload, palette };
+if (typeof module !== "undefined") module.exports = { normalize, workspaceKey, workspaceKeys, matches, focusedWindow, spatialCompare, selectionIndex, revealOffset, liveAddresses, liveSelection, previewScreens, captureReason, canCapture, previewReason, capturePlan, capturePlanHold, defaults, setting, settings, openBlocked, closeMode, shutdownReady, captureEnabled, settleOutcome, presentBlocked, contextRefusal, recheckAllowed, guardVerdict, openFailure, shutdownBlocker, activationHandoff, closeVerdict, refreshAction, ipcGuard, selectionAnchor, desktopSlot, reselectDesktop, stageMessage, activationTarget, keyIntent, zoneVisible, clipZone, hitZone, delegateAddress, hittableZone, statusCard, statusPayload, palette, listOf };

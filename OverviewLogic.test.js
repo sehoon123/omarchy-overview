@@ -1335,3 +1335,13 @@ test('the IPC walkthrough: a navigate during a cold open, then a bounded shutdow
   assert.notEqual(replyOf('toggle', quitting), 'ok');
   assert.notEqual(replyOf('toggle', { ...open, closing: true }), 'ok');
 });
+
+test('lists that crossed a QML var signal are copied, everything else is refused', () => {
+  const arr = [{ name: 'DP-1' }];
+  assert.equal(L.listOf(arr), arr);
+  const wrapper = { length: 2, 0: 'a', 1: 'b' };
+  assert.deepEqual(L.listOf(wrapper), ['a', 'b']);
+  assert.ok(Array.isArray(L.listOf(wrapper)));
+  for (const bad of [undefined, null, 'DP-1', 3, true, {}, { length: -1 }, { length: 1.5 }, { length: '2' }])
+    assert.equal(L.listOf(bad), null);
+});

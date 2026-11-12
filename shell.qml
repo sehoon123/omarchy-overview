@@ -348,7 +348,8 @@ ShellRoot {
     }
     if (result.desktops) desktopInfo = result.desktops
     if (typeof result.perMonitor === "boolean") perMonitor = result.perMonitor
-    if (Array.isArray(result.order)) desktopOrder = result.order
+    const order = Logic.listOf(result.order)
+    if (order) desktopOrder = order
     if (result.removed && filterWorkspace === result.removed) filterWorkspace = result.target
     if (result.undo) undoRecord = result.undo
     else if (["state", "switch"].indexOf(actionName) < 0) undoRecord = null
@@ -536,14 +537,15 @@ ShellRoot {
     // retried here instead of dead-ending the open.
     onReadyToBegin: if (root.opening) root.checkOpeningContext()
     onCompleted: result => {
-      const ok = !!result && !!result.ok && Array.isArray(result.outputs)
+      const outputs = result ? Logic.listOf(result.outputs) : null
+      const ok = !!result && !!result.ok && !!outputs
       const verdict = Logic.guardVerdict({ purpose: root.guardPurpose, ok: ok,
         reason: ok ? "" : (result ? result.reason : ""), opening: root.opening, shown: root.shown,
         closing: root.closing, shutdownRequested: root.shutdownRequested })
       root.guardPurpose = ""
       if (verdict.action === "ignore") return
       if (verdict.action === "fail") { root.pendingWindow = null; root.failOpen(verdict.reason); return }
-      root.allowedOutputs = result.outputs
+      root.allowedOutputs = outputs
       root.contextAllowed = true
       if (verdict.action === "present") root.presentOverview()
     }

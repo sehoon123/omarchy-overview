@@ -63,6 +63,11 @@ def usable(monitor):
 def blocked(monitor):
     """Lock verdict for one output, or '' when nothing blocks the open."""
     blockers = monitor.get('solitaryBlockedBy')
+    solitary = monitor.get('solitary')
+    if blockers is None and isinstance(solitary, str) and solitary not in ('', '0'):
+        # Hyprland 0.56 reports null, not [], while a fullscreen window is
+        # solitary on this output: nothing blocks it, and it is not a lock.
+        blockers = []
     if not isinstance(blockers, list) or not all(isinstance(value, str) for value in blockers):
         # Still fail closed, but do not call an unreadable field a locked session.
         return 'Display state could not be verified'

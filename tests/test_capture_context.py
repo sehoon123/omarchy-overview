@@ -58,6 +58,15 @@ class CaptureContextTests(unittest.TestCase):
             with self.subTest(changes=changes):
                 self.assertFalse(C.check([monitor(**changes)], {}, 'TEST')['ok'])
 
+    def test_a_fullscreen_solitary_window_does_not_block_opening(self):
+        # Live Hyprland 0.56.2 shape for an output showing a fullscreen game.
+        solitary = monitor(name='OTHER', id=1, solitary='55ca4a855480', solitaryBlockedBy=None)
+        self.assertTrue(C.check([solitary, monitor()], {}, 'TEST')['ok'])
+        self.assertTrue(C.check([monitor(solitary='55ca4a855480', solitaryBlockedBy=None)], {}, 'TEST')['ok'])
+        # A lock layer still refuses the open while a window is solitary.
+        self.assertEqual(C.check([solitary, monitor()], layer_stack(namespace='hyprlock'), 'TEST'),
+                         {'ok': False, 'reason': 'Authentication or lock dialog is open'})
+
     def test_capture_bookkeeping_is_not_a_lock(self):
         self.assertTrue(C.check([monitor(solitaryBlockedBy=['SCREENCOPY'])], {}, 'TEST')['ok'])
 
@@ -137,6 +146,11 @@ class FieldTypeTests(unittest.TestCase):
                                  {'ok': False, 'reason': 'Display state could not be verified'})
         self.assertEqual(C.check([without('solitaryBlockedBy')], {}, 'TEST'),
                          {'ok': False, 'reason': 'Display state could not be verified'})
+        # A null list is only accepted alongside a solitary window address.
+        for solitary in ('0', '', None, 3):
+            with self.subTest(solitary=solitary):
+                self.assertEqual(C.check([monitor(solitaryBlockedBy=None, solitary=solitary)], {}, 'TEST'),
+                                 {'ok': False, 'reason': 'Display state could not be verified'})
         # The live direct-scanout values are not a lock and never were.
         self.assertTrue(C.check([monitor(solitaryBlockedBy=['WINDOWED', 'CANDIDATE'])], {}, 'TEST')['ok'])
 

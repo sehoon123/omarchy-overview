@@ -37,6 +37,8 @@ ShellRoot {
   property bool closeWhenDone: false
   property string actionName: ""
   property string message: ""
+  property string lastFailure: ""
+  property double lastFailureAt: 0
   property var undoRecord: null
   property var dragSource: null
   property var dragTarget: null
@@ -164,10 +166,25 @@ ShellRoot {
   }
   // Every refused open ends here: one truthful reason in status() and the journal.
   function failOpen(reason) {
+    const summary = shown ? "Overview closed" : "Overview could not open"
     previewError = reason
     console.warn("Overview:", reason)
     resumeOpen = false
     finishClose()
+    report(summary, reason)
+  }
+  // finishClose() has already unmapped the panel, so a refusal reaches the user
+  // as a notification; the toast is only for a report made while still shown.
+  // `reason` must be a fixed sentence: it is shown verbatim and deduplicated.
+  function report(summary, reason) {
+    if (shutdownRequested) return
+    const now = Date.now()
+    const notice = Logic.failureNotice({ reason: reason, shown: shown, lastReason: lastFailure,
+      lastAt: lastFailureAt, now: now })
+    if (notice.action === "none") return
+    lastFailure = reason; lastFailureAt = now
+    if (notice.action === "toast") flash(reason)
+    else Quickshell.execDetached(["notify-send", "-a", "Overview", "-u", "normal", summary, reason])
   }
   // One sentence per refusal, decided in OverviewLogic so it stays unit-tested:
   // a stopped stream says so and names the only cure, reopening Overview (F-11).
@@ -342,7 +359,12 @@ ShellRoot {
   function actionFinished(result) {
     actionTicket = 0; busy = false
     if (!result.ok) {
-      if (closeWhenDone) { finishClose(); return }
+      if (closeWhenDone) {
+        console.warn("Overview: action", actionName, "failed:", result.error || "no error reported")
+        finishClose()
+        report("Overview action failed", "The action did not complete")
+        return
+      }
       flash(result.error || "Could not complete the action")
       return
     }

@@ -245,6 +245,17 @@ function openFailure(code) {
     pending: 'Capture context check is already running' };
   return Object.prototype.hasOwnProperty.call(messages, code) ? messages[code] : 'Overview could not open';
 }
+// Where a refusal is reported. The in-panel toast exists only while the panel is
+// shown; a hidden Overview (the usual case for a refused open) can only reach
+// the user through a desktop notification. The same reason within the window is
+// one report, so a key held down does not stack notifications.
+const FAILURE_REPEAT_MS = 10000;
+function failureNotice(state) {
+  const elapsed = state.now - state.lastAt;
+  if (state.reason === state.lastReason && elapsed >= 0 && elapsed < FAILURE_REPEAT_MS)
+    return { action: 'none' };
+  return { action: state.shown ? 'toast' : 'notify' };
+}
 // Close, shutdown and activation policy (AUDIT.md F-03, F-04, F-07 and the
 // refuted F-08). A requested shutdown always terminates, the window the user
 // chose is focused exactly once, and a motion that lands late never tears down
@@ -547,4 +558,4 @@ function palette(text) {
   }
   return colors;
 }
-if (typeof module !== "undefined") module.exports = { normalize, workspaceKey, workspaceKeys, matches, focusedWindow, spatialCompare, selectionIndex, revealOffset, liveAddresses, liveSelection, previewScreens, captureReason, canCapture, previewReason, capturePlan, capturePlanHold, defaults, setting, settings, openBlocked, closeMode, shutdownReady, captureEnabled, settleOutcome, presentBlocked, contextRefusal, recheckAllowed, guardVerdict, openFailure, shutdownBlocker, activationHandoff, closeVerdict, refreshAction, ipcGuard, selectionAnchor, desktopSlot, reselectDesktop, stageMessage, activationTarget, keyIntent, zoneVisible, clipZone, hitZone, delegateAddress, hittableZone, statusCard, statusPayload, palette, listOf };
+if (typeof module !== "undefined") module.exports = { normalize, workspaceKey, workspaceKeys, matches, focusedWindow, spatialCompare, selectionIndex, revealOffset, liveAddresses, liveSelection, previewScreens, captureReason, canCapture, previewReason, capturePlan, capturePlanHold, defaults, setting, settings, openBlocked, closeMode, shutdownReady, captureEnabled, settleOutcome, presentBlocked, contextRefusal, recheckAllowed, guardVerdict, openFailure, failureNotice, shutdownBlocker, activationHandoff, closeVerdict, refreshAction, ipcGuard, selectionAnchor, desktopSlot, reselectDesktop, stageMessage, activationTarget, keyIntent, zoneVisible, clipZone, hitZone, delegateAddress, hittableZone, statusCard, statusPayload, palette, listOf };

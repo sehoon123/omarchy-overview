@@ -1345,3 +1345,16 @@ test('lists that crossed a QML var signal are copied, everything else is refused
   for (const bad of [undefined, null, 'DP-1', 3, true, {}, { length: -1 }, { length: 1.5 }, { length: '2' }])
     assert.equal(L.listOf(bad), null);
 });
+
+test('a refusal is toasted while the panel is shown, notified while hidden, and not repeated within 10 s', () => {
+  const base = { reason: 'Display state unavailable', shown: false, lastReason: '', lastAt: 0, now: 50000 };
+  assert.deepEqual(L.failureNotice(base), { action: 'notify' });
+  assert.deepEqual(L.failureNotice({ ...base, shown: true }), { action: 'toast' });
+  const again = { ...base, lastReason: base.reason, lastAt: base.now - 9999 };
+  assert.deepEqual(L.failureNotice(again), { action: 'none' });
+  assert.deepEqual(L.failureNotice({ ...again, shown: true }), { action: 'none' });
+  assert.deepEqual(L.failureNotice({ ...again, lastAt: base.now - 10000 }), { action: 'notify' });
+  assert.deepEqual(L.failureNotice({ ...again, lastReason: 'Capture context unavailable' }), { action: 'notify' });
+  // A clock that stepped back must not silence reports until it catches up.
+  assert.deepEqual(L.failureNotice({ ...again, lastAt: base.now + 5000 }), { action: 'notify' });
+});

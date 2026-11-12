@@ -20,7 +20,7 @@ BackendProtocol {
   onStartRequested: if (client.autoStart) worker.running = true
   Process {
     id: worker
-    command: ["python3", "-u", client.workerPath]
+    command: ["/usr/bin/python3", "-u", client.workerPath]
     stdinEnabled: true
     stdout: SplitParser { onRead: data => client.receive(data) }
     stderr: SplitParser { onRead: data => console.warn("Overview worker:", data) }

@@ -3,7 +3,7 @@
 ## Requirements
 
 - The distribution's official Hyprland and Quickshell packages.
-- Python 3 (standard library only). No `grim` or screenshot tool is needed.
+- Python 3 at `/usr/bin/python3` (standard library only; the helper and worker call it by that path, not the `python3` on PATH). No `grim` or screenshot tool is needed.
 - Node.js and Qt's QML tools only for local validation.
 
 **Do not build or install a patched Hyprland for this application.** The earlier

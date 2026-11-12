@@ -10,7 +10,7 @@ OpenRequest {
   onStopRequested: helper.running = false
   Process {
     id: helper
-    command: ["python3", "-u", client.helperPath, client.outputName]
+    command: ["/usr/bin/python3", "-u", client.helperPath, client.outputName]
     stdout: SplitParser { onRead: data => client.receive(data) }
     // Metadata-only protocol; the helper never handles window pixels or titles.
     // The exit code/status only classifies the failure reason (missing python3,

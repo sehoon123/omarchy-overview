@@ -60,8 +60,10 @@ cached anywhere.
    plausible-looking substitute. Geometry is rotation-corrected and divided by the
    scale. An unreadable lock field refuses without claiming the session is locked.
    The helper's own budget is two socket calls of 0.3 s each, so its worst case is
-   ~0.6 s of socket waiting plus `python3` start-up; a warm check measures about
-   12 ms. The caller's deadline is set on the `OpenGuard` instance in `shell.qml`
+   ~0.6 s of socket waiting plus interpreter start-up. The helper runs as
+   `/usr/bin/python3`, not the `python3` on PATH, which can be a version-manager
+   shim; a warm spawn measured a median 16.0 ms that way against 21.9 ms through
+   the mise shim (20 runs each, service environment). The caller's deadline is set on the `OpenGuard` instance in `shell.qml`
    at 1200 ms, above that worst case, so a cold page cache does not fail an open;
    `OpenRequest`'s own default stays 700 ms for callers that set nothing. The panel
    remains unmapped for the whole check. If the deadline is reached anyway the open

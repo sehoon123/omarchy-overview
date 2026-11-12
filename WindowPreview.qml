@@ -71,7 +71,7 @@ Item {
         // One native source, sampled at 2x presentation size for clear text, with
         // the request quantised to a 64 px grid: a ShaderEffectSource recreates its
         // FBO whenever textureSize changes, and the card's width/height are animated
-        // (shell.qml:684-687), so tracking them pixel by pixel reallocated a texture
+        // (the Behavior blocks on shell.qml's cards), so tracking them pixel by pixel reallocated a texture
         // on essentially every animation frame. Never below ceil(size * 2), never
         // above the native source.
         textureSize: Qt.size(Math.max(1, Math.min(sourceItem ? sourceItem.width : 1, Math.ceil(width * 2 / 64) * 64)),

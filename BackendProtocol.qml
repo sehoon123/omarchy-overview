@@ -48,12 +48,11 @@ Item {
   readonly property int maxRestarts: 5
   property int completedCount: 0
   property real lastElapsedMs: 0
-  // Last-resort ceiling for one request (AUDIT.md F-08 residual, F-36 client
-  // half). A worker that is wedged but alive never reports an exit, so without
-  // this the ticket stays pending, the shell's `busy` latches for the rest of the
-  // session and shutdown blocks. It is NOT a latency promise: desktop actions are
-  // allowed to be slow, so the interval sits far above any real transaction, the
-  // worker is left running, and its arguments are never re-sent.
+  // Last-resort ceiling for one request. A worker that is wedged but alive never
+  // reports an exit, so without this the ticket stays pending, the shell's `busy`
+  // latches for the rest of the session and shutdown blocks. It is NOT a latency
+  // promise: desktop actions are allowed to be slow, so the interval sits far above any real
+  // transaction, the worker is left running, and its arguments are never re-sent.
   property int replyTimeoutMs: 20000
   property int restartDelayMs: Math.min(5000, 250 * Math.pow(2, flow.restarts))
   readonly property bool restarting: restartTimer.running

@@ -279,7 +279,7 @@ Item {
       verify(!backoff.restarting)
       compare(backoffStarts.count, 0)       // nothing fired inside this synchronous loop
     }
-    // AUDIT.md F-08 residual / F-36 client half: a worker that is wedged but
+    // A worker that is wedged but
     // alive reports no exit, so without a ceiling the ticket stays pending and
     // the shell's `busy` latches for the rest of the session.
     function test_aWedgedWorkerCannotLatchTheTicketForever() {

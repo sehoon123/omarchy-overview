@@ -53,7 +53,7 @@ QtObject {
     inFlight = null; pending = ({}); debounce.stop()
     // A file that reads but cannot be written (read-only file or filesystem,
     // wrong owner) keeps `writable` true today, so every later edit snaps back
-    // with the same toast and no explanation (AUDIT.md F-62). Demoting it makes
+    // with the same toast and no explanation. Demoting it makes
     // SettingsPanel disable its controls; the next successful load()/saved()
     // re-enables them.
     writable = false

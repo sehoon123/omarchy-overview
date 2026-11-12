@@ -2,9 +2,9 @@
 
 `timeout` is **one wall-clock budget for the whole call** — path, connect, send
 and every recv share it — so a helper that makes two calls can no longer wait
-six times its nominal budget (AUDIT F-31). A request is never retried.
+six times its nominal budget. A request is never retried.
 
-Every failure carries one bounded, non-leaking message (AUDIT F-27/F-28/F-29):
+Every failure carries one bounded, non-leaking message:
 no path, no errno, no reply content, and nothing longer than `MAX_MESSAGE`.
 Callers that already catch `RuntimeError`/`TimeoutError`/`ValueError` keep
 working: `Unreachable` and `Unreadable` are `RuntimeError`s and `ReplyTimeout`
@@ -60,7 +60,7 @@ def interpret(data, json_output, expired):
 
     `expired` records that the budget ran out rather than the peer closing, so a
     reply that is already complete (it parses, or it is `ok`) still counts, and
-    only a genuinely unfinished one is reported as a timeout (AUDIT F-30).
+    only a genuinely unfinished one is reported as a timeout.
     """
     try:
         text = data.decode().strip()

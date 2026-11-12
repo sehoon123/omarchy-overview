@@ -114,7 +114,7 @@ Item {
       for (let i = 0; i < harness.controlNames.length; i++)
         compare(findChild(panel, harness.controlNames[i]).enabled, false)
     }
-    // AUDIT.md F-62: a file that reads but cannot be written kept writable true,
+    // A file that reads but cannot be written kept writable true,
     // so every edit snapped back with the same toast forever. The first failed
     // write now disables the controls, and a later successful read restores them.
     function test_readOnlyFileDisablesTheControlsWithoutRetrying() {

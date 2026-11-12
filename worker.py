@@ -6,7 +6,7 @@ read-only output helper; this worker never scrolls desktops to obtain previews.
 
 Every protocol error is answered, never fatal: an oversized packet is refused
 politely and the rest of that line is drained instead of being parsed as a new
-request (AUDIT F-37), a retransmission that changes its arguments is refused
+request, a retransmission that changes its arguments is refused
 instead of being swallowed (F-38), and a transaction that returns something
 unusable, raises, or cannot be emitted still ends with exactly one reply, a
 cleared slot and a live thread (F-36). `close()` is bounded and idempotent

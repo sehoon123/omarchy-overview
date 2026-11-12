@@ -497,7 +497,7 @@ class FieldGuardTests(unittest.TestCase):
         self.assertIn('Hyprland did not report a desktop for that window', payload)
 
     def test_contended_action_lock_refuses_instead_of_queueing(self):
-        # AUDIT.md F-40: a held keybinding must not stack desktop switches that
+        # A held keybinding must not stack desktop switches that
         # all apply once an earlier action releases the lock.
         import fcntl
         path = Path(self.state) / 'actions.lock'

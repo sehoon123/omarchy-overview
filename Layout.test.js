@@ -68,11 +68,11 @@ assert.equal(animationOrigin(native, { ...output, id: 2 }, { x: 0, y: 0 }, fallb
 assert.equal(animationOrigin({ lastIpcObject: { monitor: 0, at: [-3000, 300], size: [800, 600] } }, output, { x: 0, y: 0 }, fallback), fallback);
 assert.equal(animationOrigin({}, output, { x: 0, y: 0 }, fallback), fallback);
 // ---------------------------------------------------------------------------
-// Frozen shape, degenerate stages and extreme inputs (AUDIT A.5: F-56, F-57).
+// Frozen shape, degenerate stages and extreme inputs.
 // ---------------------------------------------------------------------------
-// arrange() may only answer with aspects.length cells or with []: shell.qml:104
-// feeds placements to the window repeater, shell.qml:223 pairs placements[i] with
-// windows[i], and DesktopPreview.qml:18-19 indexes miniLayout[index]. Any third
+// arrange() may only answer with aspects.length cells or with []: shell.qml's
+// `placements` feeds the window repeater, its animationOrigins loop pairs
+// placements[i] with windows[i], and DesktopPreview.qml indexes miniLayout[index]. Any third
 // shape (short array, holes, zero-size cards) silently mis-pairs windows.
 const PACK_MIN = .005, PACK_MAX = 20; // packing-only ratio bounds
 const FLOOR_LABELLED = 8, FLOOR_COMPACT = 4; // below this arrange() refuses
@@ -165,8 +165,8 @@ for (const [stageWidth, stageHeight] of [[0, 100], [100, 0], [-1, 100], [100, -1
     'stage ' + stageWidth + 'x' + stageHeight + ' must refuse');
   assert.deepEqual(contract([1.6, .8], stageWidth, stageHeight, true, 'compact stage'), []);
 }
-// A model that has not arrived yet must refuse, not throw: shell.qml:104 parses
-// JSON and DesktopPreview.qml:19 maps members, both of which can be unset.
+// A model that has not arrived yet must refuse, not throw: shell.qml's `placements`
+// parses JSON and DesktopPreview.qml's `miniLayout` maps members, both of which can be unset.
 for (const missing of [[], null, undefined, 0, ''])
   assert.deepEqual(contract(missing, 1504, 730, false, 'aspects ' + JSON.stringify(missing) || 'none'), []);
 // Label space (34 px) eating the stage used to answer with a 1.6x1 card at 35 px.

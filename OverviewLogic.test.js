@@ -125,8 +125,8 @@ test('palette reads public scalar tokens only, with safe fallbacks', () => {
   assert.equal(result.foreground, '#ecf0f7');
 });
 
-// --- Extracted shell.qml policy (Workstream C). Quirk assertions carry a
-// --- `PINS F-nn` marker naming the AUDIT.md finding that will rewrite them.
+// --- Extracted shell.qml policy. Quirk assertions carry a
+// --- `PINS F-nn` marker naming the finding that will rewrite them.
 test('openOverview refusals are reported in precedence order', () => {
   assert.equal(L.openBlocked({}), '');
   assert.equal(L.openBlocked({ shutdownRequested: false, activating: false, shown: false, opening: false }), '');
@@ -661,7 +661,7 @@ test('settings ignores unknown keys and preserves the legacy keepCache key', () 
   assert.equal(L.setting('keepCache', true), true);
 });
 
-// --- Open-path policy (Workstream B: AUDIT.md F-01, F-02, F-05 and the visible
+// --- Open-path policy (F-01, F-02, F-05 and the visible
 // --- recheck). Each test fails against the pre-fix inline shell.qml policy.
 test('a paused open survives topology churn instead of being dropped', () => {
   const paused = { screens: 2, opening: false, resumeOpen: true, shown: false, shutdownRequested: false, attempts: 0 };
@@ -808,7 +808,7 @@ test('the open path walkthrough: churn, resume, present, recheck, close', () => 
   assert.equal(L.guardVerdict({ purpose: 'recheck', ok: false, reason: 'x', opening: false, shown: true, closing: true }).action, 'ignore');
 });
 
-// --- Close, shutdown and activation policy (Workstream B: AUDIT.md F-03, F-04,
+// --- Close, shutdown and activation policy (F-03, F-04,
 // --- F-07 and the refuted F-08). Each test fails against the pre-fix inline
 // --- shell.qml policy transcribed into the same signatures.
 test('a blocked shutdown still terminates: every latch is named, the watchdog forces the quit', () => {
@@ -945,7 +945,7 @@ test('the close walkthrough: choose, churn, activate once, then a bounded shutdo
 });
 
 // --- The IPC guard matrix, the launcher contract and status-payload safety
-// --- (Workstream B/D: AUDIT.md F-44, F-45, F-46, F-47, F-50, F-51 and F-09's
+// --- (F-44, F-45, F-46, F-47, F-50, F-51 and F-09's
 // --- navigateDesktop abort). The ten replies are a contract with
 // --- integrations/omarchy-overview, so every cell is pinned here. Each test
 // --- fails against the pre-fix inline shell.qml guards.
@@ -1173,7 +1173,7 @@ test('the status payload never carries pixels, paths or preview content', () => 
   assert.deepEqual(payload.settings, statusState.settings);
 });
 test('a transient toplevel reset keeps the selection anchored and Quick Look open', () => {
-  // AUDIT.md F-17: Hyprland.refreshToplevels() runs on every open and on every
+  // Hyprland.refreshToplevels() runs on every open and on every
   // movewindow, and a turn that republishes an empty collection must not be read
   // as "every window closed".
   const list = [{ address: 'a' }, { address: 'b' }, { address: 'c' }];
@@ -1216,7 +1216,7 @@ test('a transient toplevel reset keeps the selection anchored and Quick Look ope
     selected: 4, selectedAddress: 'b', previewAddress: '' }).selectedAddress, 'z');
 });
 test('a renamed or removed desktop re-selects the nearest surviving slot', () => {
-  // AUDIT.md F-55: filterWorkspace is a key, not an index. Nothing remapped it
+  // filterWorkspace is a key, not an index. Nothing remapped it
   // when the key stopped existing, which left an empty grid, a stale strip slot
   // and arrow navigation jumping to desktop 1.
   const live = [1, 2, 3, 4];
@@ -1275,7 +1275,7 @@ test('the stage always says why it is empty, including a layout it could not fil
   for (const message of messages) assert.ok(message.length > 10 && message.length < 48, message);
 });
 test('capture planning fills the pixel budget greedily and never drops a priority window', () => {
-  // AUDIT.md F-59, accepted as intended and deliberately NOT changed: when a
+  // Accepted as intended and deliberately NOT changed: when a
   // window does not fit the remaining budget, capturePlan skips it and keeps
   // filling with later, smaller windows. That is sound because the previewed,
   // dragged and selected addresses are processed first and claim budget first.

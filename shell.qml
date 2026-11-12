@@ -47,10 +47,10 @@ ShellRoot {
   property int actionTicket: 0
   property bool shutdownRequested: false
   // A requested shutdown always terminates: the watchdog deadline below outranks
-  // every latch that finishShutdown() waits on (AUDIT.md F-03).
+  // every latch that finishShutdown() waits on.
   property bool shutdownExpired: false
   property int openCount: 0
-  // The openCount a running close animation belongs to (AUDIT.md F-07).
+  // The openCount a running close animation belongs to.
   property int closeSession: 0
   property int wallpaperRevision: 0
   property bool framePresented: false
@@ -70,7 +70,7 @@ ShellRoot {
   // The plan the current state asks for, and the plan the session actually runs:
   // while the exit animation is on screen the latter is held at what the close
   // inherited, so a reordered priority (cancelDrag() nulls dragSource) cannot push
-  // a card past the pixel budget and blank it mid-animation (AUDIT.md F-13).
+  // a card past the pixel budget and blank it mid-animation.
   readonly property var plannedCaptureAddresses: windowCaptureEnabled ? Logic.capturePlan(captureMembers, capturePriority, captureScreens) : []
   property var closingPlan: []
   readonly property var captureAddresses: Logic.capturePlanHold({ closing: closing,
@@ -122,7 +122,7 @@ ShellRoot {
   onWindowsChanged: {
     // A momentarily empty collection (refreshToplevels() republishing on every
     // open and on movewindow) is a transient, not a decision: the selection
-    // stays anchored to its address and Quick Look stays open (AUDIT.md F-17).
+    // stays anchored to its address and Quick Look stays open.
     const anchor = Logic.selectionAnchor({ windows: windows, allWindows: allWindows, selected: selected,
       selectedAddress: selectedAddress, previewAddress: previewAddress })
     selected = anchor.selected
@@ -152,7 +152,7 @@ ShellRoot {
     captureTopologyReady = false
     contextAllowed = false; allowedOutputs = []
     // Output churn invalidates captures, not the window the user just clicked:
-    // the close that owns it still runs (AUDIT.md F-04).
+    // the close that owns it still runs.
     if (Logic.activationHandoff({ pendingWindow: !!pendingWindow, source: "pause",
       shutdownRequested: shutdownRequested }).action === "discard")
       pendingWindow = null
@@ -238,7 +238,7 @@ ShellRoot {
     if (blocked) { failOpen(Logic.openFailure(blocked)); return }
     opening = false; closing = false
     // Exactly one animation owns motionProgress: a close motion left over from
-    // the previous session must never fade out this one (AUDIT.md F-07).
+    // the previous session must never fade out this one.
     enterMotion.stop(); exitMotion.stop(); closeWatchdog.stop()
     motionProgress = preferences.values.motion ? 0 : 1
     const output = captureScreens.find(s => s.name === displayName), origins = {}
@@ -261,7 +261,7 @@ ShellRoot {
     input.cancelDrag(); hoverTimer.stop()
     previewAddress = ""; settingsShown = false
     // The chosen window is focused exactly once, by activateTimer, or the loss
-    // is reported; nothing else may consume it (AUDIT.md F-04).
+    // is reported; nothing else may consume it.
     const handoff = Logic.activationHandoff({ pendingWindow: !!pendingWindow, source: "close",
       shutdownRequested: shutdownRequested, activating: activateTimer.running })
     if (handoff.action === "discard") {
@@ -333,7 +333,7 @@ ShellRoot {
   function flash(text) { message = text; toastTimer.restart() }
   function closeOverview() {
     // Hold the plan before cancelDrag() reorders capturePriority: the exit
-    // animation must show the images it started with (AUDIT.md F-13).
+    // animation must show the images it started with.
     closingPlan = captureAddresses
     input.cancelDrag()
     const mode = Logic.closeMode({ opening: opening, shutdownRequested: shutdownRequested, busy: busy,
@@ -381,7 +381,7 @@ ShellRoot {
   function desktopLabel(id) { return (desktopInfo[String(id)] || {}).label || "Desktop " + String(id).replace(/^name:/, "") }
   function switchDesktop(id) { if (id) runAction(["switch", String(id)], true) }
   // A renamed or removed desktop must not strand the grid on a key that no longer
-  // exists (AUDIT.md F-55). Deferred on purpose: an action that already knows
+  // exists. Deferred on purpose: an action that already knows
   // where its windows went (actionFinished's `removed`/`target`) remaps first,
   // and an empty list is a transient - no `state` reply yet - never "no desktops
   // left". This only ever changes the filter, never the compositor's workspace.
@@ -444,7 +444,7 @@ ShellRoot {
       const item = windowRepeater.itemAt(i)
       if (!item || !item.inLayout) continue
       // A delegate whose modelData was republished away is skipped, never
-      // dereferenced (AUDIT.md F-14).
+      // dereferenced.
       const address = Logic.delegateAddress(item)
       if (!address) continue
       // The zone is the letterboxed surface, grown to a hittable size inside its
@@ -532,7 +532,7 @@ ShellRoot {
       if (["movewindow", "movewindowv2"].includes(event.name)) Hyprland.refreshToplevels()
       if (event.name === "openlayer" && /omarchy-polkit|hyprlock|swaylock|gtklock|omarchy-lockscreen/.test(event.data)) {
         // A window is never focused into a lock/polkit session; the discarded
-        // activation is reported instead of vanishing (AUDIT.md F-04).
+        // activation is reported instead of vanishing.
         const handoff = Logic.activationHandoff({ pendingWindow: !!root.pendingWindow, source: "lock" })
         if (handoff.action === "discard") console.warn("Overview:", handoff.reason)
         root.pendingWindow = null
@@ -551,7 +551,7 @@ ShellRoot {
     helperPath: Quickshell.shellPath("capture_context.py")
     // The helper's own worst case is two 0.3 s socket budgets plus interpreter
     // start-up, so a 700 ms frontend deadline could fail an open on a cold page
-    // cache (AUDIT.md F-21/F-31). The panel stays unmapped meanwhile; a warm
+    // cache. The panel stays unmapped meanwhile; a warm
     // check measures ~12 ms, so this ceiling is only ever paid on a bad day.
     timeoutMs: 1200
     // A check refused only because the previous helper has not exited yet is
@@ -598,7 +598,7 @@ ShellRoot {
   // only ever fires when that never happened, and never latches the UI (F-07).
   Timer { id: closeWatchdog; interval: 400; onTriggered: root.closeSettled("watchdog") }
   // The service's graceful stop waits six seconds: a latch may delay the quit,
-  // never cancel it (AUDIT.md F-03).
+  // never cancel it.
   Timer {
     id: shutdownWatchdog
     interval: 3000
@@ -654,7 +654,7 @@ ShellRoot {
     }
   }
 
-  // ---- IPC guard matrix (AUDIT.md F-44, F-45, F-46, F-47, F-50) ------------
+  // ---- IPC guard matrix ------------
   // Logic.ipcGuard() is the single policy and OverviewLogic.test.js pins every
   // cell. 'ok' means the request was ACCEPTED (a close queued behind a busy
   // action is an acceptance); every other reply names a deterministic refusal
@@ -936,7 +936,7 @@ ShellRoot {
       Rectangle {
         id: toast
         // A message is bounded by the panel, not by its own length: an unbounded
-        // compositor error must not grow the toast off-screen (AUDIT.md F-29).
+        // compositor error must not grow the toast off-screen.
         readonly property int textPadding: root.undoRecord ? 98 : 32
         anchors.bottom: parent.bottom; anchors.bottomMargin: 16; anchors.horizontalCenter: parent.horizontalCenter
         width: Math.max(0, Math.min(parent.width - 48, toastText.implicitWidth + textPadding)); height: 36; radius: 9

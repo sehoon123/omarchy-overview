@@ -17,8 +17,8 @@ function aspectFor(window, capture) {
 // display. Other displays / fully off-screen windows fade in at their grid slot.
 // Hyprland reports logical coordinates, so fractional scale and output rotation
 // need no conversion here. Every argument is optional on purpose: a throw inside
-// this binding would take the whole open animation with it, and shell.qml:223
-// passes placements[i], which is undefined whenever arrange() refuses.
+// this binding would take the whole open animation with it, and shell.qml's
+// animationOrigins loop passes placements[i], which is undefined whenever arrange() refuses.
 function animationOrigin(window, output, offset, fallback) {
   const ipc = window && window.lastIpcObject || {}, at = ipc.at || [], size = ipc.size || [];
   const shift = offset || {};
@@ -33,7 +33,8 @@ function animationOrigin(window, output, offset, fallback) {
 // Qt-independent geometry for a compact, aspect-preserving window overview.
 function arrange(aspects, width, height, compact) {
   // A model that has not arrived yet must refuse, not throw: callers pass
-  // JSON.parse(layoutKey) (shell.qml:104) and members.map(...) (DesktopPreview.qml:19).
+  // JSON.parse(layoutKey) (shell.qml's `placements`) and members.map(...)
+  // (DesktopPreview.qml's `miniLayout`).
   if (!aspects || !aspects.length || !aspects.map ||
       !isFinite(width) || !isFinite(height) || width <= 0 || height <= 0) return [];
   // Clamping valid portrait/ultrawide ratios would leave empty space in the cells,
@@ -41,7 +42,7 @@ function arrange(aspects, width, height, compact) {
   // catch pathological geometry: all cards share one scale, so a single 64:1 strip
   // used to shrink every other card (477x298 -> 38x24), and a garbage ratio erased
   // the grid entirely. Beyond the bounds the cell is packed at the bound while
-  // WindowPreview.qml:24-25 keeps fitting the true image inside it - letterboxed,
+  // WindowPreview's `frame` keeps fitting the true image inside it - letterboxed,
   // never distorted.
   const ratios = aspects.map(a => Number(a) > 0 && isFinite(Number(a))
     ? Math.min(20, Math.max(.005, Number(a))) : 1.6);

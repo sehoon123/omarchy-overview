@@ -88,8 +88,8 @@ function canCapture(shown, settled, window, screens) {
   return !!shown && !!settled && captureReason(window, screens) === '';
 }
 // Why a card has no image, in one of nine distinct sentences: captureReason()'s
-// six refusals, or one of the three below. A stopped stream is the honest case
-// (AUDIT.md F-11): the compositor ended that screencopy session, an automatic
+// six refusals, or one of the three below. A stopped stream is the honest case:
+// the compositor ended that screencopy session, an automatic
 // re-attempt is forbidden (AGENTS.md) and CaptureStream has no knob for one, and
 // only an explicit new Overview session builds a fresh stream - so the card names
 // the one thing that actually works instead of a dead end. Never returns ''.
@@ -115,7 +115,7 @@ function capturePlan(windows, priority, screens, maxViews = 32, maxPixels = 6400
   }
   return result;
 }
-// The exit animation keeps the plan it started with (AUDIT.md F-13, second half).
+// The exit animation keeps the plan it started with.
 // `capturePriority` changes during a close - closeOverview() cancels the drag,
 // which nulls dragSource - and capturePlan() truncates that priority order under
 // the pixel budget, so recomputing the plan mid-animation drops whichever
@@ -165,7 +165,7 @@ function closeMode(state) {
 }
 // 'flush' means the queued settings write is still in flight, so do not quit yet.
 // `expired` is the shutdown watchdog's deadline: a latch may delay the quit,
-// never cancel it, so `--shutdown` cannot outlive its wait (AUDIT.md F-03).
+// never cancel it, so `--shutdown` cannot outlive its wait.
 function shutdownReady(state) {
   if (!state.shutdownRequested) return 'wait';
   if (state.expired) return 'quit';
@@ -174,7 +174,7 @@ function shutdownReady(state) {
 }
 // Open-path policy. Topology churn, a panel-less present and a refused
 // capture-context check each resolve to one explicit outcome, never to a
-// silently dropped open (AUDIT.md F-01, F-02, F-05).
+// silently dropped open.
 // A capture object may exist only for a mapped panel, a granted context and a
 // settled topology, so a hidden or unsettled session owns none.
 function captureEnabled(state) {
@@ -256,9 +256,9 @@ function failureNotice(state) {
     return { action: 'none' };
   return { action: 'notify', expireMs: FAILURE_REPEAT_MS };
 }
-// Close, shutdown and activation policy (AUDIT.md F-03, F-04, F-07 and the
-// refuted F-08). A requested shutdown always terminates, the window the user
-// chose is focused exactly once, and a motion that lands late never tears down
+// Close, shutdown and activation policy (and the refuted F-08).
+// A requested shutdown always terminates, the window the user chose is
+// focused exactly once, and a motion that lands late never tears down
 // the session that replaced it.
 // Each latch that makes finishShutdown() wait is named here, so the shell can
 // re-arm on the one that clears and report the one that did not.
@@ -298,7 +298,7 @@ function refreshAction(state) {
   if (!state.ready) return 'skip';
   return state.busy || state.preparing ? 'defer' : 'run';
 }
-// --- The IPC guard matrix (AUDIT.md F-44, F-45, F-46, F-47, F-50). One reply
+// --- The IPC guard matrix. One reply
 // vocabulary for all ten handlers, so a caller can tell "accepted" ('ok') from
 // "deliberately refused" (a named code) from "Overview is not running" (no reply
 // at all, which only the absence of the process produces). 'unavailable' is the
@@ -386,7 +386,7 @@ function ipcGuard(request) {
 }
 // A refreshToplevels() turn that publishes an empty collection is a transient,
 // not a decision: neither the selection nor Quick Look may follow it, or a window
-// moving between desktops loses both (AUDIT.md F-17). Dismissal is an address
+// moving between desktops loses both. Dismissal is an address
 // lookup, never the filtered array's length.
 function selectionAnchor(state) {
   const windows = state.windows || [], all = state.allWindows || [];
@@ -406,8 +406,8 @@ function desktopSlot(key) {
   return match ? Number(match[1]) : NaN;
 }
 // `filterWorkspace` is a key, not an index, and a rename or removal can delete it
-// while Overview is open, stranding the grid on a desktop that no longer exists
-// (AUDIT.md F-55). Re-select the nearest surviving slot (a renamed desktop keeps
+// while Overview is open, stranding the grid on a desktop that no longer exists.
+// Re-select the nearest surviving slot (a renamed desktop keeps
 // its slot number; ties take the higher slot, the one that moved into its place),
 // else the first surviving desktop, else "All". Never switches the compositor's
 // active workspace.
@@ -483,8 +483,8 @@ function hitZone(zones, x, y) {
 }
 // A Repeater delegate outlives its model entry for a turn: Hyprland.refreshToplevels()
 // republishes the whole collection on every open and every movewindow, so a delegate
-// can exist with a null `modelData` while the hit-test or the status scan walks it
-// (AUDIT.md F-14). Its address is then unusable, and '' is the one value that must
+// can exist with a null `modelData` while the hit-test or the status scan walks it.
+// Its address is then unusable, and '' is the one value that must
 // never match a window, so both callers skip that delegate instead of throwing.
 function delegateAddress(item) {
   if (!item || !item.modelData) return '';

@@ -15,7 +15,7 @@ from workspaces import (ws_id, workspace_ref, workspace_key, monitor_keys, slot_
 
 STATE = Path(os.environ.get('OVERVIEW_STATE_DIR', str(Path(os.environ.get('XDG_STATE_HOME', str(Path.home() / '.local/state'))) / 'omarchy/overview')))
 DESKTOPS = 'desktops.json'
-# Bounded wait for the serial action lock (AUDIT.md F-40). A held keybinding must
+# Bounded wait for the serial action lock. A held keybinding must
 # refuse quickly instead of queueing desktop switches that all fire at once when
 # an earlier action finally releases it.
 LOCK_TIMEOUT = 1.5

@@ -150,7 +150,7 @@ Item {
     function test_stoppedIsNeverAutoRetriedWithinTheSession() {
       // The invariant is unconditional: there is no knob that could turn a
       // `stopped` into a re-attempt, because every new stream is a new exposure
-      // to the compositor's session lifetime (AGENTS.md, AUDIT.md F-11).
+      // to the compositor's session lifetime (AGENTS.md).
       verify(capture.retryLimit === undefined)
       verify(capture.retries === undefined)
       verify(capture.retryOnce === undefined)
@@ -204,7 +204,7 @@ Item {
     function test_aStoppedStreamsCardSaysWhatActuallyWorks() {
       // shell.qml binds WindowPreview.unavailableText to Logic.previewReason(), so
       // the QML engine - not only node - must reach that policy and the card must
-      // show the one thing that works: reopening Overview (AUDIT.md F-11).
+      // show the one thing that works: reopening Overview.
       const original = card.unavailableText
       capture.captureEnabled = true
       tryCompare(card, "hasThumbnail", true)
@@ -227,8 +227,8 @@ Item {
     }
     function test_aHeldPlanKeepsTheImageThroughTheCloseAnimation() {
       // shell.qml binds NativeCapture.captureEnabled to the capture plan, so a plan
-      // change during the exit animation is exactly what blanks a card mid-motion
-      // (AUDIT.md F-13). Logic.capturePlanHold keeps the plan the close inherited.
+      // change during the exit animation is exactly what blanks a card mid-motion.
+      // Logic.capturePlanHold keeps the plan the close inherited.
       const planned = ["synthetic"]
       const enabled = state => Logic.capturePlanHold(state).includes("synthetic")
       capture.captureEnabled = enabled({ closing: false, plan: planned, frozen: [], addresses: planned })

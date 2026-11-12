@@ -19,7 +19,7 @@ Item {
     function onKeyPressed(event) {
       scene.keyCount++
       scene.lastKey = event.key
-      // shell.qml:287 reads exactly this at exactly this moment.
+      // shell.qml's handleKey() reads exactly this at exactly this moment.
       scene.lastKeyGuard = search.compositionGuard
     }
     function onEdited() { scene.editedCount++ }

@@ -4,8 +4,8 @@
 Fails **closed** on anything it cannot read with certainty: a field of an
 unexpected type refuses the open (or drops that one output) instead of reaching
 `main()`'s blanket `except` as a traceback, and instead of emitting a
-plausible-looking geometry (AUDIT F-32/F-33). Unreadable lock state still
-refuses, but it no longer claims the session is locked (AUDIT F-52).
+plausible-looking geometry. Unreadable lock state still
+refuses, but it no longer claims the session is locked.
 
 Reasons are distinguishable on purpose — `shell.qml` shows them verbatim:
   * "Display state unavailable"          — the reply's shape is not a display list
@@ -49,7 +49,7 @@ def unusable_field(monitor):
 
     `id` is required because `OverviewLogic.captureReason()` matches the helper's
     outputs on name **and** id: an output emitted with `id: null` matches nothing
-    and silently kills every preview for the whole session (AUDIT F-33).
+    and silently kills every preview for the whole session.
     """
     name = monitor.get('name')
     transform = monitor.get('transform', 0)

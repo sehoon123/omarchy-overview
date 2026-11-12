@@ -7,9 +7,9 @@ MouseArea {
   hoverEnabled: true
   acceptedButtons: Qt.LeftButton
   preventStealing: true
-  // The hit test is injected (shell.qml:973 -> zones()); a zone it cannot name must
+  // The hit test is injected (shell.qml's hitTest(), which wraps zones()); a zone it cannot name must
   // read as the background, never as a missing object every binding here dereferences
-  // (cursorShape, shell.qml:984-990) and never as a fabricated drop target.
+  // (cursorShape) and never as a fabricated drop target.
   readonly property var noZone: ({ kind: "background", key: "background" })
   property var hitTest: (x, y) => noZone
   property var hovered: noZone

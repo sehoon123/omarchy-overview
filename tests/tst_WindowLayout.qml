@@ -289,7 +289,7 @@ Item {
       assertContained(); assertInsideStage(); assertNoOverlap()
       verify(scene.placements[0].width >= 3, "The packed cell stays at the ratio bound")
       for (let i = 1; i < 3; i++) verify(cards.itemAt(i).surface.height >= 60)
-      // Honest limit, pinned rather than papered over: the frame is what shell.qml:411
+      // Honest limit, pinned rather than papered over: the frame is what shell.qml's zones()
       // publishes as the click zone, so a window narrower than a five-hundredth of its
       // height letterboxes into a sub-pixel strip that is hard to hit. It is still
       // aspect-true, inside its cell, and it costs the other cards nothing.

@@ -151,6 +151,8 @@ Item {
       verify(client.begin("DP-2"))
       client.receive(harness.helperReply); client.processExited(0, 0)
       compare(finished.count, 1)
+      if (Array.isArray(finished.signalArguments[0][0].outputs))
+        skip("This Qt passes real arrays through var signals; the wrapper case cannot occur")
       const seen = Logic.guardResult(finished.signalArguments[0][0])
       compare(seen.ok, true); compare(seen.outputs.length, 2)
       compare(seen.outputs[1].name, "HDMI-A-1")

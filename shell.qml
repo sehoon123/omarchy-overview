@@ -173,18 +173,15 @@ ShellRoot {
     finishClose()
     report(summary, reason)
   }
-  // finishClose() has already unmapped the panel, so a refusal reaches the user
-  // as a notification; the toast is only for a report made while still shown.
   // `reason` must be a fixed sentence: it is shown verbatim and deduplicated.
   function report(summary, reason) {
     if (shutdownRequested) return
-    const now = Date.now()
-    const notice = Logic.failureNotice({ reason: reason, shown: shown, lastReason: lastFailure,
-      lastAt: lastFailureAt, now: now })
+    const now = Date.now(), key = summary + "\n" + reason
+    const notice = Logic.failureNotice({ key: key, lastKey: lastFailure, lastAt: lastFailureAt, now: now })
     if (notice.action === "none") return
-    lastFailure = reason; lastFailureAt = now
-    if (notice.action === "toast") flash(reason)
-    else Quickshell.execDetached(["notify-send", "-a", "Overview", "-u", "normal", summary, reason])
+    lastFailure = key; lastFailureAt = now
+    Quickshell.execDetached(["notify-send", "-a", "Overview", "-u", "normal", "-t", String(notice.expireMs),
+      "--", summary, reason])
   }
   // One sentence per refusal, decided in OverviewLogic so it stays unit-tested:
   // a stopped stream says so and names the only cure, reopening Overview (F-11).
@@ -362,7 +359,9 @@ ShellRoot {
       if (closeWhenDone) {
         console.warn("Overview: action", actionName, "failed:", result.error || "no error reported")
         finishClose()
-        report("Overview action failed", "The action did not complete")
+        // A background refresh can hold a close the user asked for; only an
+        // action the user chose is theirs to hear about.
+        if (actionName !== "state") report("Overview action failed", "The action did not complete")
         return
       }
       flash(result.error || "Could not complete the action")

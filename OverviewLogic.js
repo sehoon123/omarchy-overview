@@ -245,16 +245,16 @@ function openFailure(code) {
     pending: 'Capture context check is already running' };
   return Object.prototype.hasOwnProperty.call(messages, code) ? messages[code] : 'Overview could not open';
 }
-// Where a refusal is reported. The in-panel toast exists only while the panel is
-// shown; a hidden Overview (the usual case for a refused open) can only reach
-// the user through a desktop notification. The same reason within the window is
-// one report, so a key held down does not stack notifications.
+// A refusal reaches the user as a desktop notification: by the time one is
+// reported the panel is already unmapped, so its toast cannot be seen. The same
+// key within the window is one report, so a held key does not stack them; the
+// notification stays up for that window so a suppressed repeat is never silent.
 const FAILURE_REPEAT_MS = 10000;
 function failureNotice(state) {
   const elapsed = state.now - state.lastAt;
-  if (state.reason === state.lastReason && elapsed >= 0 && elapsed < FAILURE_REPEAT_MS)
+  if (state.key === state.lastKey && elapsed >= 0 && elapsed < FAILURE_REPEAT_MS)
     return { action: 'none' };
-  return { action: state.shown ? 'toast' : 'notify' };
+  return { action: 'notify', expireMs: FAILURE_REPEAT_MS };
 }
 // Close, shutdown and activation policy (AUDIT.md F-03, F-04, F-07 and the
 // refuted F-08). A requested shutdown always terminates, the window the user

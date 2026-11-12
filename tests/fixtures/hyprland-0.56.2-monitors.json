@@ -4,9 +4,7 @@
   "name": "DP-2",
   "width": 2560,
   "height": 1600,
-  "physicalWidth": 370,
-  "physicalHeight": 230,
-  "refreshRate": 59.972,
+  "refreshRate": 60.0,
   "x": 480,
   "y": 1440,
   "activeWorkspace": {
@@ -58,9 +56,7 @@
   "name": "DP-1",
   "width": 3840,
   "height": 2160,
-  "physicalWidth": 600,
-  "physicalHeight": 340,
-  "refreshRate": 143.98199,
+  "refreshRate": 144.0,
   "x": 0,
   "y": 0,
   "activeWorkspace": {

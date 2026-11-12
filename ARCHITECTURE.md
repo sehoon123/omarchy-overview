@@ -291,3 +291,9 @@ removes an output.
 Neither the offline suite nor these opt-in checks establish physical hotplug crash
 immunity, and they must not be read as evidence that the compositor defect is
 fixed.
+
+## Finding IDs in comments
+
+Comments and test titles cite findings as `F-nn` (sometimes `PINS F-nn`). These are
+IDs from an earlier review whose report is not kept in this repository. Each
+comment states its reason in full; the ID only links related sites.

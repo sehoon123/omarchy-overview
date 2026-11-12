@@ -1,17 +1,26 @@
 """Comments must not cite documents that are not in the repository."""
 from pathlib import Path
 import re
+import subprocess
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 SKIP_DIRS = {'.git', '.audit', '__pycache__', 'fixtures'}
 SUFFIXES = {'.qml', '.js', '.py', '.md', '.service', ''}
-AUDIT = re.compile(r'AUDIT(?:\.md| F-)')
-LINE_CITATION = re.compile(r'\b[A-Za-z]+\.(?:qml|js|py):\d+')
+AUDIT = re.compile(r'\bAUDIT\b')
+LINE_CITATION = re.compile(r'(?<![\w/.-])[\w.-]+\.(?:qml|js|py|md):\d+')
+
+
+def candidates():
+    try:
+        listed = subprocess.run(['git', 'ls-files'], cwd=ROOT, capture_output=True, text=True, check=True)
+        return [ROOT / name for name in listed.stdout.splitlines()]
+    except (OSError, subprocess.CalledProcessError):
+        return list(ROOT.rglob('*'))
 
 
 def sources():
-    for path in ROOT.rglob('*'):
+    for path in candidates():
         parts = path.relative_to(ROOT).parts
         if (path.is_file() and path.suffix in SUFFIXES and path != Path(__file__).resolve()
                 and not any(p in SKIP_DIRS or p.startswith('.deployment-backup-') for p in parts)):

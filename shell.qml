@@ -551,8 +551,8 @@ ShellRoot {
     helperPath: Quickshell.shellPath("capture_context.py")
     // The helper's own worst case is two 0.3 s socket budgets plus interpreter
     // start-up, so a 700 ms frontend deadline could fail an open on a cold page
-    // cache. The panel stays unmapped meanwhile; a warm
-    // check measures ~12 ms, so this ceiling is only ever paid on a bad day.
+    // cache. The panel stays unmapped meanwhile; a warm check measures ~16 ms
+    // (ARCHITECTURE.md), so this ceiling is only ever paid on a bad day.
     timeoutMs: 1200
     // A check refused only because the previous helper has not exited yet is
     // retried here instead of dead-ending the open.

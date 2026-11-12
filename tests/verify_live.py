@@ -22,7 +22,7 @@ original = {w['address']: workspace_key(w['workspace']) for w in windows if w['a
 with tempfile.TemporaryDirectory(prefix='overview-verification-') as state:
     env = dict(os.environ, OVERVIEW_STATE_DIR=state)
     def call(*args):
-        p = subprocess.run(['python3', str(CONTROLLER), *map(str, args)], text=True, capture_output=True, env=env)
+        p = subprocess.run([sys.executable, str(CONTROLLER), *map(str, args)], text=True, capture_output=True, env=env)
         result = json.loads(p.stdout)
         assert p.returncode == 0 and result['ok'], result
         return result

@@ -2,6 +2,8 @@
 
 They are duplicated on purpose (the helper runs before QML, QML must not import
 Python), so this test reads both sources and fails when the copies drift.
+Equal sets are not equal matching: Python compares lock namespaces exactly,
+while shell.qml's regex also matches them as substrings.
 """
 import ast
 from pathlib import Path

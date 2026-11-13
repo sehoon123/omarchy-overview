@@ -175,7 +175,8 @@ ShellRoot {
     finishClose()
     report(summary, reason)
   }
-  // `reason` must be a fixed sentence: it is shown verbatim and deduplicated.
+  // `reason` must be a fixed sentence: it is shown verbatim, deduplicated and kept
+  // in the notification history, so the caller journals any detail it has.
   function report(summary, reason) {
     if (shutdownRequested) return
     const now = Date.now(), key = summary + "\n" + reason
@@ -362,7 +363,7 @@ ShellRoot {
       if (senderShowing && !closeWhenDone) { flash(result.error || "Could not complete the action"); return }
       console.warn("Overview: action", actionName, "failed:", result.error || "no error reported")
       if (senderShowing) finishClose()
-      report("Overview action failed", result.error || "The action did not complete")
+      report("Overview action failed", "The action did not complete")
       return
     }
     applyDesktopState(result)

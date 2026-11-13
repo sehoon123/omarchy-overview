@@ -6,6 +6,7 @@ still takes effect, even after the client stopped waiting. An instance on anothe
 display adds `Some instances on other displays match:`, and a non-UTF-8 locale
 puts a Qt warning before everything the client prints.
 """
+import fcntl
 import json
 import os
 from pathlib import Path
@@ -410,6 +411,23 @@ class StepPathTests(LauncherTestCase):
             with self.subTest(name):
                 self.assertEqual([], box.lines('controller.log'), 'only `No running instances` proves Overview gone')
                 self.assertVisibleFailure(box, press)
+
+    def test_a_cli_switch_that_fails_says_so(self):
+        boxes = {
+            'it cannot take the action lock': Box(self, running=False),
+            'it outlives the deadline': Box(self, replies={'navigateDesktop': [{'reply': 'unavailable', 'after': 1.0}]}),
+        }
+        holders = []
+        for box in boxes.values():
+            holders.append(open(box.root / 'actions.lock', 'a'))
+            self.addCleanup(holders[-1].close)
+            fcntl.flock(holders[-1], fcntl.LOCK_EX)
+        presses = wait_all([box.start('--next') for box in boxes.values()])
+        for (name, box), press in zip(boxes.items(), presses):
+            with self.subTest(name):
+                self.assertEqual(1, len(box.controller('start')), 'the CLI switch ran')
+                self.assertVisibleFailure(box, press)
+        self.assertIn('Another overview action is still running', str(boxes['it cannot take the action lock'].notices()))
 
     def test_a_held_step_key_never_stacks_switches(self):
         box = Box(self, running=False)

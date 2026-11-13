@@ -373,8 +373,6 @@ ShellRoot {
     if (result.message) flash(result.message)
     if (closeWhenDone) finishClose()
   }
-  // The desktop refresh is a read the user did not ask for, so it stays off
-  // `busy`: it cannot hold a close, swallow a key or report a failed action.
   function refreshDesktops() { refreshTicket = bridge.request(["state"], {}, shown ? displayName : "") }
   function refreshFinished(result) {
     refreshTicket = 0
@@ -525,7 +523,6 @@ ShellRoot {
     id: stateRefresh
     interval: 80
     onTriggered: {
-      // The worker answers one request at a time, its own refresh included.
       const action = Logic.refreshAction({ ready: bridge.ready, busy: bridge.outstanding, preparing: root.preparing })
       if (action === "defer") { restart(); return }
       if (action === "run") root.refreshDesktops()

@@ -1,6 +1,5 @@
 import QtQuick
 
-// Every file is missing, so settings load their defaults and nothing is written.
 QtObject {
   property string path
   property bool watchChanges

@@ -23,7 +23,7 @@ import QtQuick
 //     handshake and cleared by a worker loss. No request is framed before it, so
 //     a stale or future protocol is never spoken.
 //   gaveUp                        -> the restart budget is spent: no restart is
-//     scheduled, and only a new Overview process starts a worker again.
+//     scheduled.
 //
 // Adapter interface (additive, consumed by BackendClient.qml):
 //   writeRequested(text) - the adapter writes this to the worker's stdin.
@@ -43,12 +43,7 @@ Item {
   property bool ready: false
   property int sequence: 0
   property var pending: ({})
-  // Cumulative worker losses, reported as `workerRestarts` by the IPC status.
   property int restarts: 0
-  // Losses since the worker last answered a request; only these spend the
-  // restart budget and grow the backoff. A worker that answers again has shown
-  // it runs, so crashes days apart never strand the shell, while one that dies
-  // before every answer is still given up on.
   property int unansweredLosses: 0
   readonly property int maxRestarts: 5
   readonly property bool gaveUp: unansweredLosses > maxRestarts

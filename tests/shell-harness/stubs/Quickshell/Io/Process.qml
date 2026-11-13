@@ -1,7 +1,6 @@
 import QtQuick
 import Quickshell
 
-// Records what the shell asks of a child process; it cannot start one.
 QtObject {
   id: process
   property var command: []

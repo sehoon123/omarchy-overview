@@ -161,8 +161,6 @@ Item {
       compare(revived.failed, false); compare(revived.modelData, first)
       compare(bank.frameCount, 2); compare(bank.viewCount, 2)
     }
-    // A stopped stream is final for the session, so the plan dropping its window
-    // and adding it back must not build a fresh producer that would retry it.
     function test_aStoppedProducerIsKeptThroughPlanChurnUntilTheSessionEnds() {
       const stopped = bank.lookup("first")
       stopped.failed = true
@@ -171,7 +169,6 @@ Item {
       bank.addresses = ["first", "second"]; wait(0)
       verify(bank.lookup("first") === stopped, "the stopped producer was replaced")
       compare(scene.created, 0); compare(bank.frameCount, 1)
-      // Its window closing still releases it.
       sourceModel.values = [second]; wait(0)
       compare(bank.lookup("first"), null)
       tryCompare(scene, "destroyed", 1)

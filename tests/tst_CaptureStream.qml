@@ -181,11 +181,6 @@ Item {
       compare(scene.created, 1); compare(capture.stream, null)
     }
     function test_onlyANewSessionOrANewSourceRecoversAStoppedStream() {
-      // The card says "Live preview stopped \u00b7 reopen Overview to retry"
-      // (Logic.previewReason). Reopening is the cure because CaptureBank builds a
-      // new CaptureStream for every session. Within one session captureEnabled
-      // also cycles whenever the capture plan drops the window and adds it back,
-      // and that is not a new session; a replaced source is a new stream.
       capture.captureEnabled = true
       capture.stream.stopped()
       compare(capture.failed, true); compare(scene.created, 1)
@@ -195,7 +190,6 @@ Item {
       capture.captureSource = second
       compare(capture.failed, false); compare(scene.created, 2)
       compare(capture.stream.captureSource, second); verify(capture.hasContent)
-      // A stop of the new source is again final for this object.
       capture.stream.stopped()
       wait(0); wait(0)
       compare(scene.created, 2); compare(capture.failed, true)
@@ -218,7 +212,6 @@ Item {
       compare(card.unavailableText, "Live preview stopped · reopen Overview to retry")
       compare(text.text, "Live preview stopped · reopen Overview to retry")
       verify(text.visible); verify(!text.truncated); verify(text.contentWidth <= text.width)
-      // The capture plan dropping and re-adding the window is not a new session.
       capture.captureEnabled = false; capture.captureEnabled = true
       wait(50)
       compare(card.hasThumbnail, false)

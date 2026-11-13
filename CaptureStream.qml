@@ -23,8 +23,6 @@ Item {
   readonly property int viewCount: stream ? 1 : 0
 
   onAllowStartChanged: if (allowStart) start()
-  // A session ends by destroying this object (CaptureBank.clear()), so a stop
-  // outlives captureEnabled cycling while the capture plan churns.
   onCaptureEnabledChanged: {
     if (!captureEnabled) release()
     else start()

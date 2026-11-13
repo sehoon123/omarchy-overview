@@ -1,7 +1,7 @@
 import QtQuick
 
 // Quickshell's ObjectModel is a model for the shell's Repeater and a `values`
-// list for everything else; a ListModel row per window keeps both views.
+// list for everything else.
 ListModel {
   property var values: []
   onValuesChanged: {

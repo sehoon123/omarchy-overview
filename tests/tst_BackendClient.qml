@@ -280,9 +280,6 @@ Item {
       verify(!backoff.restarting)
       compare(backoffStarts.count, 0)       // nothing fired inside this synchronous loop
     }
-    // The budget counts losses since the worker last answered. One that answers
-    // between crashes has proved it runs, so crashes spread over a long session
-    // never leave the shell without a worker; `restarts` still counts them all.
     function test_aWorkerThatAnswersBetweenLossesIsAlwaysRestarted() {
       for (let loss = 1; loss <= fast.maxRestarts + 2; loss++) {
         fast.receive(harness.handshake)

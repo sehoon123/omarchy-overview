@@ -3,9 +3,6 @@ import QtTest
 import Quickshell
 import Quickshell.Hyprland
 
-// shell.qml end to end, offline. ./build copies the shell into ./app, and the
-// stubs on the import path stand in for Quickshell, so this file plays the
-// worker, the capture-context helper, the IPC caller and the compositor.
 // It is not named tst_*.qml because the main qmltestrunner pass over tests/
 // runs without these stubs and must not pick it up.
 Item {
@@ -82,7 +79,6 @@ Item {
       helper.stdout.read(JSON.stringify({ ok: true, outputs: [scene.output] }))
       helper.exited(0, 0)
     }
-    // The worker greets the shell, which reads the desktop state once.
     function startWorker() {
       workerSays({ event: "ready", protocol: 1 })
       const startup = requests().pop()
@@ -95,7 +91,6 @@ Item {
       grantContext()
       compare(scene.shell.shown, true)
     }
-    // Every open reads the desktop state again shortly after it is shown.
     function openRefresh() {
       const before = requests().length
       tryVerify(() => requests().length === before + 1, 1000, "the open sends a desktop refresh")
@@ -125,8 +120,6 @@ Item {
       compare(scene.activated, ["a1"])
     }
 
-    // The refresh that every open sends is a background read: a slow or wedged
-    // worker must not keep the overlay, and its keyboard grab, on screen.
     function test_closeHidesPromptlyWhileTheDesktopRefreshIsOutstanding_data() {
       return [{ tag: "close" }, { tag: "toggle" }, { tag: "escape" }]
     }
@@ -138,13 +131,11 @@ Item {
       else if (row.tag === "toggle") compare(ipc().toggle(""), "ok")
       else keyClick(Qt.Key_Escape)
       tryCompare(scene.shell, "shown", false, 1000)
-      // Its late reply still updates the desktop list, and nothing else.
       answer(refresh, { desktops: { "1": { label: "Mail" } }, order: [1, 2], perMonitor: false })
       compare(scene.shell.shown, false)
       compare(Quickshell.executed, [])
       compare(status().desktopLabels, ["Mail", "Desktop 2"])
     }
-    // Focusing a window never needs the worker, so the refresh cannot hold it up.
     function test_choosingAWindowIsHonouredWhileTheDesktopRefreshIsOutstanding_data() {
       return [{ tag: "enter", chosen: "a1" }, { tag: "click", chosen: "b2" }]
     }
@@ -160,7 +151,6 @@ Item {
       wait(100)
       compare(scene.activated, [row.chosen])
     }
-    // A refresh the user never asked for does not fail as an action they took.
     function test_aLostRefreshIsJournaledNotReportedAsAFailedAction() {
       startWorker()
       open()
@@ -170,8 +160,6 @@ Item {
       compare(scene.shell.shown, true)
       compare(status().message, "")
     }
-    // A desktop switch does need the worker, which answers one request at a time:
-    // the click is refused with the true reason, and works once the refresh is in.
     function test_aDesktopClickDuringTheRefreshIsRefusedWithTheTrueReason() {
       startWorker()
       open()
@@ -186,8 +174,6 @@ Item {
       click("desktop", { id: 2 })
       compare(requests().pop().args, ["switch", "2"])
     }
-    // A stopped stream is final until a new Overview session, even when its
-    // window leaves the capture plan and comes back within this one.
     function test_aStoppedPreviewStaysStoppedForTheRestOfTheSession() {
       const stopped = "Live preview stopped \u00b7 reopen Overview to retry"
       startWorker()
@@ -207,14 +193,11 @@ Item {
       compare(card("a1").reason, stopped)
       compare(status().captureViews, 1)
       compare(Quickshell.screencopies.length, 2)
-      // Reopening is the cure the card names.
       compare(ipc().close(), "ok")
       tryCompare(scene.shell, "shown", false, 1000)
       open()
       tryVerify(() => card("a1").thumbnail, 2000)
     }
-    // A worker that keeps dying without answering is no longer restarted, and
-    // the shell must not keep promising that it is.
     function test_aWorkerThatKeepsDyingIsReportedAsStoppedNotRestarting() {
       startWorker()
       worker().exited(1, 0)

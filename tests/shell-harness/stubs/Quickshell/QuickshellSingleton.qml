@@ -1,9 +1,6 @@
 pragma Singleton
 import QtQuick
 
-// The registries let a test play every party the shell talks to: the worker and
-// the capture-context helper (processes), the IPC caller (ipcHandlers) and the
-// compositor's capture streams (screencopies).
 QtObject {
   property var envMap: ({})
   property var screens: []

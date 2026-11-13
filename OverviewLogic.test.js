@@ -892,10 +892,6 @@ test('a close motion or its watchdog only finishes the session it was started fo
   assert.equal(L.closeVerdict({ ...closing, source: 'unknown' }).action, 'finish');
 });
 test('a desktop-state refresh never clobbers a queued close or undo (F-08, refuted)', () => {
-  // The audit refuted F-08 and downgraded it to low. The refresh now has its own
-  // ticket and never sets `busy`, actionName or closeWhenDone, so those always
-  // describe the user's own action. `busy` here is the worker being busy: it
-  // answers one request at a time, so the refresh waits for any request in flight.
   assert.equal(L.refreshAction({ ready: true, busy: false, preparing: false }), 'run');
   assert.equal(L.refreshAction({ ready: true, busy: true, preparing: false }), 'defer');
   assert.equal(L.refreshAction({ ready: true, busy: false, preparing: true }), 'defer');
@@ -904,16 +900,13 @@ test('a desktop-state refresh never clobbers a queued close or undo (F-08, refut
   assert.equal(L.refreshAction({ ready: false, busy: false, preparing: false }), 'skip');
   assert.equal(L.refreshAction({ ready: false, busy: true, preparing: true }), 'skip');
   assert.equal(L.refreshAction({}), 'skip');
-  // Escape during the user's own action still queues the close behind it.
   const busyClose = { opening: false, shutdownRequested: false, busy: true, closing: false, shown: true, motion: true };
   assert.equal(L.closeMode(busyClose), 'deferToBusy');
   assert.equal(L.refreshAction({ ready: true, busy: true, preparing: false }), 'defer');
 });
 test('a desktop action the worker cannot take now says why, truthfully', () => {
-  // Ready but refused: the one request lane is taken by the background refresh.
   assert.equal(L.backendRefusal({ ready: true }), 'Overview is refreshing the desktop list; please try again');
   assert.equal(L.backendRefusal({ ready: false }), 'Overview backend is restarting; please try again');
-  // The client stopped restarting a worker that kept dying without answering.
   assert.equal(L.backendRefusal({ ready: false, gaveUp: true }),
     'Overview backend stopped after repeated failures; restart Overview');
 });

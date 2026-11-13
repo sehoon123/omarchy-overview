@@ -42,9 +42,6 @@ Item {
       const old = entries[window.address]
       // Address reuse is not identity continuity. Never inherit another source.
       const keep = !!old && old.modelData === window
-      // While new sources are forbidden (closing), a capture-plan change must
-      // not release a producer this bank is not allowed to recreate, and a
-      // stopped producer is kept so that a fresh one cannot retry its stream.
       if (!addresses.includes(window.address) && !(keep && (!allowNew || old.failed))) continue
       const entry = keep ? old : allowNew
         ? factory.createObject(bank, { modelData: window, serial: ++nextSerial }) : null

@@ -8,7 +8,7 @@ ConditionEnvironment=WAYLAND_DISPLAY
 Type=simple
 Environment=OVERVIEW_START_HIDDEN=1
 ExecStart=/usr/bin/quickshell -p %h/.config/omarchy/overview --no-duplicate
-ExecStop=%h/.local/bin/omarchy-overview --shutdown
+ExecStop=%h/.local/bin/omarchy-overview --shutdown ${MAINPID}
 Restart=on-failure
 RestartSec=1
 TimeoutStopSec=10

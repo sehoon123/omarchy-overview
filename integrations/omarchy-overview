@@ -59,13 +59,18 @@ start_overview() {
   timeout "$left" env OVERVIEW_START_HIDDEN=1 quickshell -p "$config" --no-duplicate --daemonize 9>&- || true
 }
 
+# The unit runs `--shutdown ${MAINPID}`, and systemd leaves $MAINPID unset once it
+# saw the main process exit. An empty PID, or one that no longer exists, is gone
+# whatever quickshell prints; without the argument only quickshell can tell.
+main_gone() { (($#)) && { [[ -z $1 ]] || ! kill -0 "$1" 2>/dev/null; }; }
+
 if [[ "${1:-}" == --shutdown ]]; then
   deadline 7
   # Each accepted shutdown restarts the shell's 3 s watchdog, so it is asked only
   # until one is answered `ok`; after that only `status` is polled.
   call=shutdown
   ipc shutdown
-  until [[ $outcome == not-running ]]; do
+  until [[ $outcome == not-running ]] || main_gone "${@:2}"; do
     [[ $outcome == answered && $reply == ok ]] && call=status
     sleep .03
     if ! time_left; then echo "omarchy-overview: Overview did not stop within $limit seconds" >&2; exit 1; fi
@@ -79,7 +84,7 @@ case "${1:-}" in
   --next|--previous) direction="${1#--}" lock=sehun-overview-step ;;
   --app) mode=app lock=sehun-overview ;;
   "") lock=sehun-overview ;;
-  *) echo 'Usage: omarchy-overview [--app|--next|--previous|--shutdown]' >&2; exit 2 ;;
+  *) echo 'Usage: omarchy-overview [--app|--next|--previous|--shutdown [MAINPID]]' >&2; exit 2 ;;
 esac
 exec 9>"${XDG_RUNTIME_DIR:?}/$lock.lock"
 flock -n 9 || exit 0

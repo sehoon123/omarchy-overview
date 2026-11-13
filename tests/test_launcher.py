@@ -320,7 +320,7 @@ class TogglePathTests(LauncherTestCase):
 
     def test_a_retry_that_gets_no_answer_is_reported_as_unanswered(self):
         # Overview still runs a request it gave no answer to, so the press may yet
-        # take effect: the refusal before that request is not why the press failed.
+        # take effect, and the refusal before that request is not why it failed.
         replies = {'the retry never answers': ['closing', {'after': 'never'}],
                    'the deadline cuts the retry short': [{'reply': 'closing', 'after': 1.5}]}
         cases = [(name, args, Box(self, replies={call: steps}))
@@ -440,26 +440,24 @@ class StepPathTests(LauncherTestCase):
 
     def test_a_cli_switch_that_fails_says_so_in_a_fixed_sentence(self):
         # controller.py's error can quote Hyprland, a workspace name included.
-        cases = {
-            'it cannot take the action lock': (Box(self, running=False), True,
-                                               'The desktop switch failed', 'Another overview action is still running'),
-            'it outlives the deadline': (Box(self, replies={'navigateDesktop': [{'reply': 'unavailable', 'after': 1.0}]}),
-                                         True, 'The desktop switch did not finish within 2 seconds', ''),
-            'Hyprland refuses it': (Box(self, running=False, controller_error='Hyprland: no workspace named Payroll'),
-                                    False, 'The desktop switch failed', 'no workspace named Payroll'),
-        }
-        for box, locked, _, _ in cases.values():
-            if locked:
-                holder = open(box.root / 'actions.lock', 'a')
-                self.addCleanup(holder.close)
-                fcntl.flock(holder, fcntl.LOCK_EX)
-        presses = wait_all([box.start('--next') for box, _, _, _ in cases.values()])
-        for (name, (box, _, sentence, detail)), press in zip(cases.items(), presses):
+        locked = Box(self, running=False)
+        late = Box(self, replies={'navigateDesktop': [{'reply': 'unavailable', 'after': 1.0}]})
+        refused = Box(self, running=False, controller_error='Hyprland: no workspace named Payroll')
+        for box in (locked, late):
+            holder = open(box.root / 'actions.lock', 'a')
+            self.addCleanup(holder.close)
+            fcntl.flock(holder, fcntl.LOCK_EX)
+        cases = {'it cannot take the action lock': (locked, 'The desktop switch failed'),
+                 'it outlives the deadline': (late, 'The desktop switch did not finish within 2 seconds'),
+                 'Hyprland refuses it': (refused, 'The desktop switch failed')}
+        presses = wait_all([box.start('--next') for box, _ in cases.values()])
+        for (name, (box, sentence)), press in zip(cases.items(), presses):
             with self.subTest(name):
                 self.assertEqual(1, len(box.controller('start')), 'the CLI switch ran')
                 self.assertVisibleFailure(box, press)
                 self.assertEqual([sentence], box.notices())
-                self.assertIn(detail, press.stderr, 'the journal keeps the reason')
+        self.assertIn('Another overview action is still running', presses[0].stderr, 'the journal keeps the reason')
+        self.assertIn('no workspace named Payroll', presses[2].stderr, 'the journal keeps the reason')
 
     def test_a_press_stopped_by_a_signal_stops_its_cli_switch(self):
         for sig, status in ((signal.SIGTERM, 143), (signal.SIGINT, 130)):

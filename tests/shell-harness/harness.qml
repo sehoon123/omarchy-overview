@@ -69,8 +69,11 @@ Item {
     function ipc() { return Quickshell.ipcHandlers.overview }
     function status() { return JSON.parse(ipc().status()) }
     function card(address) { return status().windows.find(w => w.address === address) }
+    function zoneAt(kind, match) {
+      return status().zones.find(z => z.kind === kind && Object.keys(match).every(k => z[k] === match[k]))
+    }
     function click(kind, match) {
-      const z = status().zones.find(z => z.kind === kind && Object.keys(match).every(k => z[k] === match[k]))
+      const z = zoneAt(kind, match)
       verify(z, "no " + kind + " zone " + JSON.stringify(match))
       mouseClick(scene, z.x + z.width / 2, z.y + z.height / 2)
     }
@@ -97,6 +100,12 @@ Item {
       const refresh = requests().pop()
       compare(refresh.args, ["state"])
       return refresh
+    }
+    function shownSession() {
+      startWorker()
+      open()
+      answer(openRefresh())
+      tryCompare(scene.shell, "motionProgress", 1, 1000)
     }
 
     function test_openPresentsAndToggleCloses() {
@@ -208,10 +217,7 @@ Item {
       return [{ tag: "×" }, { tag: "background of All" }]
     }
     function test_theCloseZonesCloseWhileAnActionIsUnanswered(row) {
-      startWorker()
-      open()
-      answer(openRefresh())
-      tryCompare(scene.shell, "motionProgress", 1, 1000)
+      shownSession()
       if (row.tag === "background of All") click("all", {})
       click("add", {})
       const create = requests().pop()
@@ -228,10 +234,7 @@ Item {
         { tag: "Ctrl+F in Quick Look" }]
     }
     function test_escapeClosesWhenTheSearchFieldCannotTakeTheKeyboard(row) {
-      startWorker()
-      open()
-      answer(openRefresh())
-      tryCompare(scene.shell, "motionProgress", 1, 1000)
+      shownSession()
       tryVerify(() => status().searchFocused, 1000)
       if (row.tag === "Ctrl+F in Quick Look") {
         keyClick(Qt.Key_Space)
@@ -291,15 +294,6 @@ Item {
       } else {
         compare(notices(), ["notify-send: The action did not complete"])
       }
-    }
-    function shownSession() {
-      startWorker()
-      open()
-      answer(openRefresh())
-      tryCompare(scene.shell, "motionProgress", 1, 1000)
-    }
-    function zoneAt(kind, match) {
-      return status().zones.find(z => z.kind === kind && Object.keys(match).every(k => z[k] === match[k]))
     }
     function test_aSwitchThatSucceedsClosesThePanelThatSentIt() {
       shownSession()

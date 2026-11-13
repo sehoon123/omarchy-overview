@@ -349,6 +349,17 @@ class FieldGuardTests(unittest.TestCase):
             c.act(['step', 'next'])
             focus.assert_called_once_with(2)
 
+    def test_a_step_direction_other_than_next_or_previous_is_refused_before_any_dispatch(self):
+        for direction in ('bogus', '', 'NEXT', 'prev', 'next ', '-1'):
+            with self.subTest(direction=direction):
+                with self.assertRaises(ValueError) as caught:
+                    c.act(['step', direction])
+                self.assertEqual(str(caught.exception), 'Invalid step direction')
+        self.monitors[0]['activeWorkspace'] = {'id': 2, 'name': '2'}
+        with patch.object(c, 'focus_desktop') as focus:
+            c.act(['step', 'previous'])
+        focus.assert_called_once_with(1)
+
     def test_an_incomplete_or_unreadable_request_is_a_sentence_not_a_traceback(self):
         self.assertEqual(c.act([])['order'], [1, 2])  # answered as a state query
         for args in [['move'], ['move', '0xabc'], ['switch'], ['step'], ['reorder'], ['reorder', '1'],

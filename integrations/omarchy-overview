@@ -18,9 +18,7 @@ time_left() {
 # on other displays match:` when one runs elsewhere. Under a non-UTF-8 locale Qt
 # prints a warning on stdout before everything else, so the client runs under
 # C.UTF-8 and the reply is the last line. A live instance that is busy or frozen
-# never answers, and it still runs the request once it can. A call that timed
-# out after an earlier answer or IPC error was cut short by the deadline, so that
-# earlier outcome stays the reason the press failed.
+# never answers, and it still runs the request once it can.
 outcome=''
 ipc() {
   local out status=0
@@ -61,14 +59,11 @@ start_overview() {
 }
 
 # The unit runs `--shutdown ${MAINPID}`, and systemd leaves $MAINPID unset once it
-# saw the main process exit. An empty PID, or one that no longer exists, is gone
-# whatever quickshell prints; without the argument only quickshell can tell.
+# saw the main process exit.
 main_gone() { (($#)) && { [[ -z $1 ]] || ! kill -0 "$1" 2>/dev/null; }; }
 
 if [[ "${1:-}" == --shutdown ]]; then
   deadline 7
-  # Each accepted shutdown restarts the shell's 3 s watchdog, so it is asked only
-  # until one is answered `ok`; after that only `status` is polled.
   call=shutdown
   ipc shutdown
   until [[ $outcome == not-running ]] || main_gone "${@:2}"; do
@@ -96,8 +91,7 @@ time_left || fail_press "The session lock check did not finish within $limit sec
 
 if [[ -n $direction ]]; then
   # Logic.ipcGuard() in OverviewLogic.js answers navigateDesktop `ok` exactly when
-  # the step took effect, and none of its refusals has a side effect. A refusal,
-  # or a message quickshell printed itself, is asked again until the deadline.
+  # the step took effect, and none of its refusals has a side effect.
   ipc navigateDesktop "$direction"
   while [[ $outcome == answered && $reply != ok && $reply != unavailable ]]; do
     sleep .025

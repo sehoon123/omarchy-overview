@@ -5,7 +5,8 @@ or frozen the client simply waits. Every request a live instance has received
 still takes effect, even after the client stopped waiting. An instance on another
 display adds `Some instances on other displays match:`, and a non-UTF-8 locale
 puts a Qt warning before everything the client prints. `--daemonize` leaves a
-daemon behind that keeps every descriptor it inherited.
+daemon behind that keeps the descriptors it inherited beyond stdin, stdout and
+stderr.
 """
 import fcntl
 import json
@@ -393,9 +394,7 @@ class StepPathTests(LauncherTestCase):
                 self.assertEqual(switches, len(box.controller('fired')))
 
     def test_a_step_ends_quietly_only_on_ok_and_any_other_answer_is_asked_again(self):
-        # Logic.ipcGuard() answers navigateDesktop `ok` exactly when the step took
-        # effect, and its refusals have no side effect. quickshell prints its own
-        # exit-0 messages when no handler ran at all.
+        # Each list mixes Overview's refusals with exit-0 messages quickshell prints itself.
         transient = ['closing', 'opening', 'activating', 'busy', 'Not ready to accept queries yet.']
         persistent = ['shutdown', 'settings', 'Target not found.',
                       ' ERROR quickshell.ipc: Error occurred while waiting for response.', '']

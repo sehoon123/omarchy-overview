@@ -337,8 +337,6 @@ function ipcGuard(request) {
       shown: state.shown, opening: state.opening });
     return blocked ? { action: 'refuse', reply: blocked } : { action: 'open', reply: 'ok' };
   }
-  // A toggle over a visible or opening session closes it, at once even while a
-  // desktop action is in flight.
   if (call === 'toggle') return { action: 'close', reply: 'ok' };
   if (call === 'setQuery') {
     if (!state.shown) return { action: 'refuse', reply: 'hidden' };

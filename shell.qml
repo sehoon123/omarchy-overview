@@ -45,7 +45,6 @@ ShellRoot {
   property point dragPoint: Qt.point(0, 0)
   property var hoverDesktop: 0
   property int actionTicket: 0
-  // The openCount the action in flight was sent from.
   property int actionSession: 0
   property int refreshTicket: 0
   property bool shutdownRequested: false
@@ -358,18 +357,16 @@ ShellRoot {
   }
   function actionFinished(result) {
     actionTicket = 0; busy = false
-    // A reply acts only on the session that sent it. After a close or a reopen it
-    // brings only its desktop data, and a failure becomes a notification.
-    const live = shown && !closing && actionSession === openCount
+    const senderShowing = shown && !closing && actionSession === openCount
     if (!result.ok) {
-      if (live && !closeWhenDone) { flash(result.error || "Could not complete the action"); return }
+      if (senderShowing && !closeWhenDone) { flash(result.error || "Could not complete the action"); return }
       console.warn("Overview: action", actionName, "failed:", result.error || "no error reported")
-      if (live) finishClose()
+      if (senderShowing) finishClose()
       report("Overview action failed", result.error || "The action did not complete")
       return
     }
     applyDesktopState(result)
-    if (!live) return
+    if (!senderShowing) return
     if (result.removed && filterWorkspace === result.removed) filterWorkspace = result.target
     if (result.undo) undoRecord = result.undo
     else if (actionName !== "switch") undoRecord = null

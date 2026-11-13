@@ -146,17 +146,18 @@ test('closeOverview picks one of three modes', () => {
   // PINS F-06 - corrected by F-06 fix: closing an in-flight open is immediate and silent.
   assert.equal(L.closeMode({ ...state, opening: true, busy: true, closing: true }), 'immediate');
   assert.equal(L.closeMode({ ...state, shutdownRequested: true, busy: true, closing: true }), 'immediate');
-  // An unanswered desktop action never holds the panel: the close happens now and
-  // the action's reply arrives hidden.
-  assert.equal(L.closeMode({ ...state, busy: true }), 'animate');
-  assert.equal(L.closeMode({ ...state, busy: true, motion: false }), 'immediate');
-  assert.equal(L.closeMode({ ...state, busy: true, closing: true }), 'ignore');
   // F-07 residual fixed: a close arriving during a close is still ignored, which
   // is correct, but `closing` is no longer unbounded - the close watchdog below
   // finishes the session even when the exit motion never completes, so `closing`
   // can no longer latch the whole UI into a permanently disabled state.
   assert.equal(L.closeMode({ ...state, closing: true }), 'ignore');
   assert.equal(L.closeVerdict({ closing: true, session: 2, openCount: 2, source: 'watchdog' }).action, 'finish');
+});
+test('a desktop action in flight never holds a close', () => {
+  const busy = { opening: false, shutdownRequested: false, busy: true, closing: false, shown: true, motion: true };
+  assert.equal(L.closeMode(busy), 'animate');
+  assert.equal(L.closeMode({ ...busy, motion: false }), 'immediate');
+  assert.equal(L.closeMode({ ...busy, closing: true }), 'ignore');
 });
 test('shutdown waits for work, flushes settings, then quits', () => {
   const ready = { shutdownRequested: true, busy: false, preparing: false, activating: false, saving: false };
@@ -1031,8 +1032,6 @@ test('a call arriving mid-transition is refused with the documented value', () =
   // `preparing` is `opening` under the name status() reports; same cell.
   assert.equal(L.ipcGuard({ call: 'navigateDesktop', arg: 'next',
     state: { ...hidden, opening: true, preparing: true } }).reply, 'opening');
-  // `busy` is a desktop action in flight: it blocks neither an open nor a close,
-  // and the close happens at once.
   const busy = { ...open, busy: true };
   for (const call of ['setQuery', 'togglePreview', 'showSettings', 'navigateDesktop'])
     assert.equal(replyOf(call, busy), 'busy', call);

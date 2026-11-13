@@ -30,6 +30,12 @@ def layer_stack(**layer):
     return {'OTHER': {'levels': {'3': [layer]}}}
 
 
+def strict(line):
+    """Parse a reply the way the shell's JSON.parse does: NaN and Infinity are errors."""
+    def refuse(constant): raise ValueError('reply is not JSON, it contains ' + constant)
+    return json.loads(line, parse_constant=refuse)
+
+
 class CaptureContextTests(unittest.TestCase):
     def test_checks_only_read_only_monitor_and_layer_queries(self):
         call = Mock(side_effect=[[monitor()], {}])
@@ -223,6 +229,15 @@ class GeometryTests(unittest.TestCase):
                                  {}, 'TEST')['outputs'][0]
                 self.assertEqual((output['width'], output['height']), size)
 
+    def test_a_size_that_is_not_finite_and_positive_once_scaled_is_refused(self):
+        for changes in (dict(scale=1e-320), dict(width=1e308, scale=.5), dict(height=1e308, scale=.5),
+                        dict(width=1e-300, height=1e-300, scale=1e300), dict(height=1e-300, scale=1e300)):
+            with self.subTest(changes=changes):
+                self.assertEqual(C.check([monitor(**changes)], {}, 'TEST'),
+                                 {'ok': False, 'reason': 'Selected display is unavailable (scale)'})
+        other = C.check([monitor(name='OTHER', id=1, scale=1e-320), monitor()], {}, 'TEST')
+        self.assertEqual([output['name'] for output in other['outputs']], ['TEST'])
+
     def test_output_payload_carries_no_titles_descriptions_or_pixels(self):
         entry = monitor(description='Panel SERIAL-ABC123', model=HOSTILE, title=HOSTILE,
                         frames=[1, 2, 3], activeWorkspace={'name': HOSTILE})
@@ -273,6 +288,15 @@ class MainTests(unittest.TestCase):
                                        return_value=C.check([monitor()], {}, 'TEST')),
                          {'ok': True, 'outputs': [dict(name='TEST', id=0, scale=1, x=0, y=0,
                                                        width=1920.0, height=1080.0)]})
+
+    def test_an_overflowing_size_is_printed_as_a_refusal_in_strict_json(self):
+        stream = io.StringIO()
+        call = Mock(side_effect=[[monitor(scale=1e-320)], {}])
+        with patch.object(C.hypr_ipc, 'call', call), patch.object(sys, 'argv', ['capture_context.py', 'TEST']), \
+             contextlib.redirect_stdout(stream):
+            C.main()
+        self.assertEqual(strict(stream.getvalue()),
+                         {'ok': False, 'reason': 'Selected display is unavailable (scale)'})
 
     def test_the_transport_is_late_bound_so_a_test_can_never_reach_a_compositor(self):
         self.assertEqual(C.inspect.__defaults__, (None,))

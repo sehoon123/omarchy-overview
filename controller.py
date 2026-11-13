@@ -289,6 +289,8 @@ def act(args, monitor=''):
             raise ValueError('That desktop is no longer available')
         focus_desktop(target)
     elif action == 'step':
+        if argument(1) not in ('next', 'previous'):
+            raise ValueError('Invalid step direction')
         if not local:
             raise ValueError('No desktops on this monitor')
         current = workspace_key(screen.get('activeWorkspace') if screen else hypr('-j', 'activeworkspace', json_output=True))

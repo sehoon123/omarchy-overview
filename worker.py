@@ -27,6 +27,7 @@ MAX_MESSAGE = 200
 CLOSE_TIMEOUT = 2
 ARITY = {'state': 1, 'create': 1, 'move': 3, 'switch': 2, 'step': 2,
          'reorder': 3, 'remove': 2, 'undo': 2}
+UNUSABLE = {'ok': False, 'error': 'Overview backend returned an unusable result', 'replayed': False}
 
 
 def message(error):
@@ -35,6 +36,18 @@ def message(error):
     if len(str(error)) > 2 * MAX_MESSAGE or len(text) > MAX_MESSAGE:
         text = text[:MAX_MESSAGE - 1] + '…'
     return text or 'Overview backend could not complete that request'
+
+
+def request_id(packet):
+    ident = packet.get('id') if isinstance(packet, dict) else None
+    return ident if type(ident) is int and 0 < ident < 2147483647 else 0
+
+
+def encode(packet):
+    try:
+        return json.dumps(packet, separators=(',', ':'), allow_nan=False)
+    except Exception:
+        return json.dumps({'id': request_id(packet), **UNUSABLE}, separators=(',', ':'))
 
 
 class Gate:
@@ -59,8 +72,8 @@ class Worker:
 
     def accept(self, packet):
         if not isinstance(packet, dict): raise ValueError('Expected an object')
-        ident = packet.get('id')
-        if type(ident) is not int or not 0 < ident < 2147483647: raise ValueError('Invalid request id')
+        ident = request_id(packet)
+        if not ident: raise ValueError('Invalid request id')
         kind = packet.get('type', 'request')
         with self.lock:
             # An in-flight duplicate must not emit an early terminal reply for
@@ -116,8 +129,7 @@ class Worker:
                 # Everything after execute() is inside the guarded region: a
                 # non-dict result or an unserialisable reply must not strand
                 # `active`, kill this thread, or answer with no reply at all.
-                if not isinstance(result, dict):
-                    result = {'ok': False, 'error': 'Overview backend returned an unusable result', 'replayed': False}
+                if not isinstance(result, dict): result = dict(UNUSABLE)
                 result.update(id=packet.get('id'), elapsedMs=round((time.monotonic() - start) * 1000, 1))
                 with self.lock: self.active = None
                 try: self.emit(result)
@@ -149,7 +161,7 @@ def main():
     output_lock = threading.Lock()
     def emit(packet):
         with output_lock:
-            try: print(json.dumps(packet, separators=(',', ':')), flush=True)
+            try: print(encode(packet), flush=True)
             except BrokenPipeError: pass
     def terminate(signum, frame): raise SystemExit(0)
     signal.signal(signal.SIGTERM, terminate)
@@ -168,9 +180,8 @@ def main():
                     raise ValueError('Protocol packet is too large')
                 packet = json.loads(line)
                 worker.accept(packet)
-            except (ValueError, TypeError) as error:
-                emit({'id': packet.get('id', 0) if isinstance(packet, dict) else 0,
-                      'ok': False, 'error': message(error)})
+            except (ValueError, TypeError, RecursionError) as error:
+                emit({'id': request_id(packet), 'ok': False, 'error': message(error)})
     finally:
         worker.close()
 

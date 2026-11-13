@@ -17,6 +17,12 @@ from worker import Worker
 HOSTILE = 'Secret Document.pdf \x01 data:image/png;base64,iVBORw0KGgo pixel-bytes'
 
 
+def strict(line):
+    """Parse a reply the way the shell's JSON.parse does: NaN and Infinity are errors."""
+    def refuse(constant): raise ValueError('reply is not JSON, it contains ' + constant)
+    return json.loads(line, parse_constant=refuse)
+
+
 class WorkerTests(unittest.TestCase):
     def test_one_completion_and_no_replay(self):
         replies = queue.Queue()
@@ -259,6 +265,15 @@ class MainLoopTests(unittest.TestCase):
         self.assertTrue(all(reply['error'] and len(reply['error']) <= W.MAX_MESSAGE for reply in errors))
         self.assertEqual([packet['id'] for packet in accepted], [3])
 
+    def test_a_line_past_a_parser_limit_is_refused_and_the_next_line_is_still_read(self):
+        for line in (b'[' * 200000, b'{"a":' * 200000, b'1' * 5000):
+            with self.subTest(line=line[:6]):
+                accepted, replies, _ = self.drive(line + b'\n{"id":2,"args":["state"]}\n')
+                errors = [reply for reply in replies if not reply.get('ok', True)]
+                self.assertEqual([reply['id'] for reply in errors], [0])
+                self.assertTrue(0 < len(errors[0]['error']) <= W.MAX_MESSAGE)
+                self.assertEqual([packet['id'] for packet in accepted], [2])
+
     def test_a_protocol_error_reply_never_echoes_the_packet(self):
         accepted, replies, _ = self.drive(('{"id":0,"args":["state"],"title":"%s"}\n' % HOSTILE.replace('\x01', ' ')
                                            ).encode() + b'{"id":4,"args":["state"]}\n')
@@ -266,6 +281,52 @@ class MainLoopTests(unittest.TestCase):
         self.assertEqual([packet['id'] for packet in accepted], [0, 4])  # the stub does not validate ids
         self.assertEqual(errors, [])
         self.assertNotIn('Secret', json.dumps(replies))
+
+
+class ReplyLineTests(unittest.TestCase):
+    """What the shell parses: the real Worker behind main(), only its transaction mocked.
+
+    Nothing here reaches the controller, the action lock or a desktop.
+    """
+
+    def run_main(self, data, transaction=lambda packet, gate: {'ok': True}):
+        stream = io.StringIO()
+        stdin = types.SimpleNamespace(buffer=io.BytesIO(data))
+        with patch.object(W.Worker, 'run_transaction', staticmethod(transaction)), \
+             patch.object(W, 'signal', types.SimpleNamespace(signal=Mock(), SIGTERM=15)), \
+             patch.object(W, 'sys', types.SimpleNamespace(stdin=stdin)), \
+             contextlib.redirect_stdout(stream):
+            W.main()
+        lines = stream.getvalue().splitlines()
+        self.assertEqual(strict(lines[0]), {'event': 'ready', 'protocol': 1})
+        return lines[1:]
+
+    def test_a_refusal_never_echoes_an_id_the_protocol_does_not_allow(self):
+        for ident in (b'NaN', b'Infinity', b'-Infinity', b'"' + b'A' * 900000 + b'"', b'9' * 3000, b'1.5',
+                      b'true', b'null', b'0', b'-3', b'2147483647', b'[1]', b'{"a":1}'):
+            with self.subTest(ident=ident[:24]):
+                lines = self.run_main(b'{"id":' + ident + b',"args":["state"]}\n')
+                self.assertEqual(len(lines), 1)
+                self.assertLessEqual(len(lines[0]), 4 * W.MAX_MESSAGE)
+                self.assertEqual(strict(lines[0]), {'id': 0, 'ok': False, 'error': 'Invalid request id'})
+
+    def test_a_refusal_of_a_request_with_a_valid_id_answers_to_that_id(self):
+        lines = self.run_main(b'{"id":7,"args":["unknown"]}\n')
+        self.assertEqual([strict(line) for line in lines],
+                         [{'id': 7, 'ok': False, 'error': 'Unsupported command or arity'}])
+
+    def test_a_result_json_cannot_carry_is_answered_once_with_a_fixed_failure(self):
+        circular = []
+        circular.append(circular)
+        results = {'a set': {'ok': True, 'order': [1, {2}]}, 'NaN': {'ok': True, 'x': float('nan')},
+                   'Infinity': {'ok': True, 'x': float('inf')}, 'a cycle': {'ok': True, 'x': circular}}
+        for name, result in results.items():
+            with self.subTest(result=name):
+                lines = self.run_main(b'{"id":1,"args":["state"]}\n', lambda packet, gate: result)
+                self.assertEqual(len(lines), 1)
+                reply = strict(lines[0])
+                self.assertEqual((reply['id'], reply['ok'], reply['error']),
+                                 (1, False, 'Overview backend returned an unusable result'))
 
 
 if __name__ == '__main__': unittest.main()

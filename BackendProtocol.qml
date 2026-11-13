@@ -22,6 +22,8 @@ import QtQuick
 //   ready                         -> set only by the {"event":"ready","protocol":1}
 //     handshake and cleared by a worker loss. No request is framed before it, so
 //     a stale or future protocol is never spoken.
+//   gaveUp                        -> the restart budget is spent: no restart is
+//     scheduled, and only a new Overview process starts a worker again.
 //
 // Adapter interface (additive, consumed by BackendClient.qml):
 //   writeRequested(text) - the adapter writes this to the worker's stdin.
@@ -41,11 +43,15 @@ Item {
   property bool ready: false
   property int sequence: 0
   property var pending: ({})
-  // Cumulative worker losses, reported as `workerRestarts` by the IPC status and
-  // never reset by a later handshake, so the cap below is a per-session ceiling
-  // rather than a consecutive-failure one.
+  // Cumulative worker losses, reported as `workerRestarts` by the IPC status.
   property int restarts: 0
+  // Losses since the worker last answered a request; only these spend the
+  // restart budget and grow the backoff. A worker that answers again has shown
+  // it runs, so crashes days apart never strand the shell, while one that dies
+  // before every answer is still given up on.
+  property int unansweredLosses: 0
   readonly property int maxRestarts: 5
+  readonly property bool gaveUp: unansweredLosses > maxRestarts
   property int completedCount: 0
   property real lastElapsedMs: 0
   // Last-resort ceiling for one request. A worker that is wedged but alive never
@@ -54,7 +60,7 @@ Item {
   // promise: desktop actions are allowed to be slow, so the interval sits far above any real
   // transaction, the worker is left running, and its arguments are never re-sent.
   property int replyTimeoutMs: 20000
-  property int restartDelayMs: Math.min(5000, 250 * Math.pow(2, flow.restarts))
+  property int restartDelayMs: Math.min(5000, 250 * Math.pow(2, flow.unansweredLosses))
   readonly property bool restarting: restartTimer.running
   readonly property bool outstanding: Object.keys(flow.pending).length > 0
   signal completed(int ticket, var result)
@@ -81,6 +87,7 @@ Item {
     if (!pending[packet.id]) return  // late/duplicate/unknown replies cannot affect a new request
     const next = Object.assign({}, pending); delete next[packet.id]; pending = next
     if (!Object.keys(pending).length) watchdog.stop()
+    unansweredLosses = 0
     completedCount++; lastElapsedMs = packet.elapsedMs || 0
     completed(packet.id, packet)
   }
@@ -88,8 +95,9 @@ Item {
     ready = false
     failPending("Overview worker stopped; action was not replayed")
     restarts++
-    if (restarts <= maxRestarts) restartTimer.restart()
-    else restartTimer.stop()
+    unansweredLosses++
+    if (gaveUp) restartTimer.stop()
+    else restartTimer.restart()
   }
   // Internal: fail every outstanding ticket. The arguments are dropped here, so
   // no path can re-send a create/move/switch/step/reorder/remove/undo.

@@ -50,7 +50,7 @@ Item {
     function resetClient(bridge) {
       bridge.processExited()   // the documented loss path clears pending and ready
       bridge.cancelRestart()
-      bridge.restarts = 0; bridge.sequence = 0
+      bridge.restarts = 0; bridge.unansweredLosses = 0; bridge.sequence = 0
       bridge.completedCount = 0; bridge.lastElapsedMs = 0
     }
     function init() {

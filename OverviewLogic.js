@@ -300,9 +300,11 @@ function refreshAction(state) {
   return state.busy || state.preparing ? 'defer' : 'run';
 }
 // Why a desktop action the user chose could not be sent. A ready worker refuses
-// only while the background desktop refresh holds its one request lane.
+// only while the background desktop refresh holds its one request lane, and a
+// client that gave up restarting the worker must not promise a restart.
 function backendRefusal(state) {
-  return state.ready ? 'Overview is refreshing the desktop list; please try again'
+  if (state.ready) return 'Overview is refreshing the desktop list; please try again';
+  return state.gaveUp ? 'Overview backend stopped after repeated failures; restart Overview'
     : 'Overview backend is restarting; please try again';
 }
 // --- The IPC guard matrix. One reply

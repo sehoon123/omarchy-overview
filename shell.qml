@@ -352,7 +352,7 @@ ShellRoot {
     closeWhenDone = !!exitAfter
     actionTicket = bridge.request(args, {}, shown ? displayName : "")
     busy = actionTicket !== 0
-    if (!busy) { closeWhenDone = false; flash(Logic.backendRefusal({ ready: bridge.ready })) }
+    if (!busy) { closeWhenDone = false; flash(Logic.backendRefusal({ ready: bridge.ready, gaveUp: bridge.gaveUp })) }
   }
   function actionFinished(result) {
     actionTicket = 0; busy = false

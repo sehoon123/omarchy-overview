@@ -133,7 +133,8 @@ to neither Hyprland nor Quickshell. It currently covers:
 - opening-helper protocol failures: late, duplicate, oversized and malformed
   replies, distinct refusal reasons, and a helper that never reports its exit;
 - the worker protocol client: framing, one request in flight, no replay after
-  worker loss, capped restart backoff, and a per-request reply timeout;
+  worker loss, a capped restart backoff whose budget an answering worker earns
+  back, and a per-request reply timeout;
 - settings validation and persistence, including unreadable and newer documents,
   a read-only file, and preserved unknown keys;
 - the Python guard paths — malformed or missing compositor fields, transport

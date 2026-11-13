@@ -198,7 +198,10 @@ step, reorder, remove and undo actions use the resident Python worker and its
 serial action lock; a move carries a grouped window's members in its undo
 record, but there is no bulk "move this desktop's windows" action. Mutating
 requests are not replayed after worker loss, and a request that never answers is
-failed by the client after 20 s so the UI cannot stay busy forever. Preview
+failed by the client after 20 s so the UI cannot stay busy forever. A lost
+worker is restarted after a growing delay; once it has been lost six times with
+no answer in between, the client stops restarting it, and a desktop action then
+says the backend stopped and that restarting Overview is the cure. Preview
 capture never invokes these actions and never scrolls a viewport.
 
 The read-only `state` refresh that follows every open, worker start and
@@ -277,8 +280,8 @@ identity (nothing while disabled, one shared source per window, synchronous
 release before destruction, no retry, no address-reuse inheritance, plan held
 while closing); the opening-helper protocol (late/duplicate/oversized/malformed
 replies, five distinct failure reasons, bounded drain); the worker protocol client
-(framing, single flight, no replay after loss, capped restart backoff, reply
-timeout); settings validation and persistence (defaults, rejected values,
+(framing, single flight, no replay after loss, a capped restart backoff whose
+budget an answering worker earns back, reply timeout); settings validation and persistence (defaults, rejected values,
 unreadable and newer documents, a read-only file, preserved unknown keys); the
 Python guard paths (transport failures and bounded error text, malformed monitor,
 workspace, client and layer fields, corrupt saved desktop order, undo-record

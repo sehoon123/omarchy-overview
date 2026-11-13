@@ -455,6 +455,8 @@ class ShutdownTests(LauncherTestCase):
             'status answers until it exits': dict(stops_in=1.5),
             'status hangs until it exits': dict(stops_in=1.5, replies={'status': [{'after': 'never'}]}),
             'the shutdown reply never comes': dict(stops_in=1.5, replies={'shutdown': [{'after': 'never'}]}),
+            'quickshell answers the first shutdown itself':
+                dict(stops_in=0.05, replies={'shutdown': ['Not ready to accept queries yet.', 'ok']}),
             'exits after the 3 s watchdog': dict(stops_in=4.0),
             'never exits, status answers': dict(stops_in=None),
             'never exits, status hangs': dict(stops_in=None, replies={'status': [{'after': 'never'}]}),
@@ -469,6 +471,7 @@ class ShutdownTests(LauncherTestCase):
             with self.subTest(name):
                 stops = box.lines('shutdown.log')
                 stops_in = box.world.get('stops_in', 0.05)
+                self.assertLessEqual(len(stops), 1, 'a second shutdown would restart the 3 s watchdog')
                 if name.startswith('not running'):
                     self.assertEqual(0, press.rc, press.stderr)
                     self.assertLess(press.elapsed, 0.5)
@@ -477,6 +480,7 @@ class ShutdownTests(LauncherTestCase):
                     self.assertTrue(press.stderr, 'the journal says why the stop failed')
                     self.assertLess(press.elapsed, stop_budget - 1, 'ExecStop has to finish before TimeoutStopSec')
                 else:
+                    self.assertEqual(1, len(stops), 'the shutdown reached Overview')
                     early = stops[0][0] + stops_in - press.ended
                     self.assertLessEqual(early, 0, f'reported gone {early:.2f} s before the process exited')
                     self.assertEqual(0, press.rc, press.stderr)

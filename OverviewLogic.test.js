@@ -1072,12 +1072,12 @@ test('a call arriving mid-transition is refused with the documented value', () =
   assert.deepEqual(guard('close', { ...hidden, opening: true }), { action: 'close', reply: 'ok' });
 });
 test('navigateDesktop keeps the launcher contract: only `unavailable` may dispatch a real switch', () => {
-  // integrations/omarchy-overview answers a call Overview never answered (its
-  // `quickshell ipc call` exited non-zero: not running, or killed by `timeout
-  // 1`), or exactly the reply 'unavailable', with `controller.py step
-  // <direction>` - a REAL compositor workspace switch. Every other reply must
-  // therefore mean "Overview is running and owns this request".
-  const dispatches = (reply, answered = true) => !answered || reply === 'unavailable';
+  // integrations/omarchy-overview answers `No running instances` (Overview is not
+  // running), or exactly the reply 'unavailable', with `controller.py step
+  // <direction>`, a REAL compositor workspace switch. A call that times out is
+  // reported, never switched. Every other reply must therefore mean "Overview
+  // is running and owns this request".
+  const dispatches = (reply, running = true) => !running || reply === 'unavailable';
   // Hidden and able: the shell takes the step itself, so the launcher stays out.
   assert.deepEqual(guard('navigateDesktop', hidden), { action: 'step', reply: 'ok' });
   assert.equal(dispatches('ok'), false);

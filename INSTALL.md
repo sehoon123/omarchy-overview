@@ -98,7 +98,7 @@ Expected status while **visible**:
   so a high `captureViews` means many small windows, not a raised cap.
 - Per-window `imageReady`: Qt has content for that window's own capture
 - `live`: that window's stream is currently updating
-- `sourceId`: stable per window for the whole session; unique across windows
+- `sourceId`: stable per window while it stays in the capture plan; unique across windows
 - `reason`: why that card has no image. One of nine fixed strings:
   `Waiting for window metadata`, `Window is not captureable`,
   `Display is unavailable`, `Waiting for window geometry`,

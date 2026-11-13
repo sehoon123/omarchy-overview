@@ -667,7 +667,8 @@ ShellRoot {
   // Logic.ipcGuard() is the single policy and OverviewLogic.test.js pins every
   // cell. 'ok' means the request was ACCEPTED (a close queued behind a busy
   // action is an acceptance); every other reply names a deterministic refusal
-  // that has NO side effect; no reply at all can only mean the process is gone.
+  // that has NO side effect. A call that gets no reply in time may still be
+  // applied later, so the launcher reports it instead of retrying.
   // `preparing` is `opening`. Precedence is always: invalid argument,
   // shutdownRequested, closing, then the call's own state. Only
   // navigateDesktop's 'unavailable' invites integrations/omarchy-overview's

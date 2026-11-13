@@ -291,12 +291,19 @@ function closeVerdict(state) {
   return { action: 'finish',
     reason: state.source === 'watchdog' ? 'Close animation did not finish; closing now' : '' };
 }
-// F-08 was refuted and downgraded: the desktop-state refresh defers while an
-// action or an open is in flight, so it can never overwrite the actionName and
-// closeWhenDone of a queued close or undo. Extracted so that stays checked.
+// F-08 was refuted and downgraded: the desktop-state refresh has its own ticket
+// and never touches the actionName and closeWhenDone of a queued close or undo.
+// It defers while the worker is busy, because the worker answers one request at
+// a time, and while an open is in flight.
 function refreshAction(state) {
   if (!state.ready) return 'skip';
   return state.busy || state.preparing ? 'defer' : 'run';
+}
+// Why a desktop action the user chose could not be sent. A ready worker refuses
+// only while the background desktop refresh holds its one request lane.
+function backendRefusal(state) {
+  return state.ready ? 'Overview is refreshing the desktop list; please try again'
+    : 'Overview backend is restarting; please try again';
 }
 // --- The IPC guard matrix. One reply
 // vocabulary for all ten handlers, so a caller can tell "accepted" ('ok') from
@@ -570,4 +577,4 @@ function palette(text) {
   }
   return colors;
 }
-if (typeof module !== "undefined") module.exports = { normalize, workspaceKey, workspaceKeys, matches, focusedWindow, spatialCompare, selectionIndex, revealOffset, liveAddresses, liveSelection, previewScreens, captureReason, canCapture, previewReason, capturePlan, capturePlanHold, defaults, setting, settings, openBlocked, closeMode, shutdownReady, captureEnabled, settleOutcome, presentBlocked, contextRefusal, recheckAllowed, guardVerdict, openFailure, failureNotice, guardResult, shutdownBlocker, activationHandoff, closeVerdict, refreshAction, ipcGuard, selectionAnchor, desktopSlot, reselectDesktop, stageMessage, activationTarget, keyIntent, zoneVisible, clipZone, hitZone, delegateAddress, hittableZone, statusCard, statusPayload, palette, listOf };
+if (typeof module !== "undefined") module.exports = { normalize, workspaceKey, workspaceKeys, matches, focusedWindow, spatialCompare, selectionIndex, revealOffset, liveAddresses, liveSelection, previewScreens, captureReason, canCapture, previewReason, capturePlan, capturePlanHold, defaults, setting, settings, openBlocked, closeMode, shutdownReady, captureEnabled, settleOutcome, presentBlocked, contextRefusal, recheckAllowed, guardVerdict, openFailure, failureNotice, guardResult, shutdownBlocker, activationHandoff, closeVerdict, refreshAction, backendRefusal, ipcGuard, selectionAnchor, desktopSlot, reselectDesktop, stageMessage, activationTarget, keyIntent, zoneVisible, clipZone, hitZone, delegateAddress, hittableZone, statusCard, statusPayload, palette, listOf };

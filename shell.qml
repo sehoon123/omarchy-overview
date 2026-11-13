@@ -45,6 +45,7 @@ ShellRoot {
   property point dragPoint: Qt.point(0, 0)
   property var hoverDesktop: 0
   property int actionTicket: 0
+  property int refreshTicket: 0
   property bool shutdownRequested: false
   // A requested shutdown always terminates: the watchdog deadline below outranks
   // every latch that finishShutdown() waits on.
@@ -351,7 +352,7 @@ ShellRoot {
     closeWhenDone = !!exitAfter
     actionTicket = bridge.request(args, {}, shown ? displayName : "")
     busy = actionTicket !== 0
-    if (!busy) { closeWhenDone = false; flash("Overview backend is restarting; please try again") }
+    if (!busy) { closeWhenDone = false; flash(Logic.backendRefusal({ ready: bridge.ready })) }
   }
   function actionFinished(result) {
     actionTicket = 0; busy = false
@@ -359,23 +360,32 @@ ShellRoot {
       if (closeWhenDone) {
         console.warn("Overview: action", actionName, "failed:", result.error || "no error reported")
         finishClose()
-        // A background refresh can hold a close the user asked for; only an
-        // action the user chose is theirs to hear about.
-        if (actionName !== "state") report("Overview action failed", "The action did not complete")
+        report("Overview action failed", "The action did not complete")
         return
       }
       flash(result.error || "Could not complete the action")
       return
     }
+    applyDesktopState(result)
+    if (result.removed && filterWorkspace === result.removed) filterWorkspace = result.target
+    if (result.undo) undoRecord = result.undo
+    else if (actionName !== "switch") undoRecord = null
+    if (result.message) flash(result.message)
+    if (closeWhenDone) finishClose()
+  }
+  // The desktop refresh is a read the user did not ask for, so it stays off
+  // `busy`: it cannot hold a close, swallow a key or report a failed action.
+  function refreshDesktops() { refreshTicket = bridge.request(["state"], {}, shown ? displayName : "") }
+  function refreshFinished(result) {
+    refreshTicket = 0
+    if (result.ok) applyDesktopState(result)
+    else console.warn("Overview: desktop refresh failed:", result.error || "no error reported")
+  }
+  function applyDesktopState(result) {
     if (result.desktops) desktopInfo = result.desktops
     if (typeof result.perMonitor === "boolean") perMonitor = result.perMonitor
     const order = Logic.listOf(result.order)
     if (order) desktopOrder = order
-    if (result.removed && filterWorkspace === result.removed) filterWorkspace = result.target
-    if (result.undo) undoRecord = result.undo
-    else if (["state", "switch"].indexOf(actionName) < 0) undoRecord = null
-    if (result.message) flash(result.message)
-    if (closeWhenDone) finishClose()
   }
   function undo() { if (undoRecord && !busy) runAction(["undo", JSON.stringify(undoRecord)]) }
   function desktopLabel(id) { return (desktopInfo[String(id)] || {}).label || "Desktop " + String(id).replace(/^name:/, "") }
@@ -515,11 +525,10 @@ ShellRoot {
     id: stateRefresh
     interval: 80
     onTriggered: {
-      // Deferring is what keeps actionName/closeWhenDone with the single
-      // in-flight action, including a close queued behind it (F-08, refuted).
-      const action = Logic.refreshAction({ ready: bridge.ready, busy: root.busy, preparing: root.preparing })
+      // The worker answers one request at a time, its own refresh included.
+      const action = Logic.refreshAction({ ready: bridge.ready, busy: bridge.outstanding, preparing: root.preparing })
       if (action === "defer") { restart(); return }
-      if (action === "run") root.runAction(["state"])
+      if (action === "run") root.refreshDesktops()
     }
   }
   Connections {
@@ -543,8 +552,11 @@ ShellRoot {
   BackendClient {
     id: bridge
     workerPath: Quickshell.shellPath("worker.py")
-    onReadyChanged: if (ready) root.runAction(["state"])
-    onCompleted: (ticket, result) => { if (ticket === root.actionTicket) root.actionFinished(result) }
+    onReadyChanged: if (ready) root.refreshDesktops()
+    onCompleted: (ticket, result) => {
+      if (ticket === root.refreshTicket) root.refreshFinished(result)
+      else if (ticket === root.actionTicket) root.actionFinished(result)
+    }
   }
   OpenGuard {
     id: openGuard

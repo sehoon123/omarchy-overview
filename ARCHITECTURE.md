@@ -193,13 +193,20 @@ inside its own cell, never into a neighbour's.
 
 Window activation uses the Wayland activation path at a cold start and the
 address-targeted Hyprland dispatcher when metadata is ready; it runs after the
-closing animation, not during capture. User-requested state, create, move,
-switch, step, reorder, remove and undo actions use the resident Python worker and
-its serial action lock; a move carries a grouped window's members in its undo
+closing animation, not during capture. User-requested create, move, switch,
+step, reorder, remove and undo actions use the resident Python worker and its
+serial action lock; a move carries a grouped window's members in its undo
 record, but there is no bulk "move this desktop's windows" action. Mutating
 requests are not replayed after worker loss, and a request that never answers is
 failed by the client after 20 s so the UI cannot stay busy forever. Preview
 capture never invokes these actions and never scrolls a viewport.
+
+The read-only `state` refresh that follows every open, worker start and
+workspace event uses the same worker, which answers one request at a time, but
+it is not a user action: it never sets `busy`, so it cannot hold a close, drop a
+key or block choosing a window, and its failure goes to the journal. A desktop
+action clicked while it is in flight is refused with that reason instead of
+queued.
 
 Workspace identity is a positive numeric selector or `name:<name>`, not a named
 workspace's temporary negative ID. Removal moves windows rather than closing

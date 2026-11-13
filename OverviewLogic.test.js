@@ -892,13 +892,10 @@ test('a close motion or its watchdog only finishes the session it was started fo
   assert.equal(L.closeVerdict({ ...closing, source: 'unknown' }).action, 'finish');
 });
 test('a desktop-state refresh never clobbers a queued close or undo (F-08, refuted)', () => {
-  // Recorded and deliberately NOT changed: the audit refuted F-08 and downgraded
-  // it to low, because runAction() refuses while busy and the refresh defers
-  // while an action or an open is in flight, so actionName/closeWhenDone always
-  // describe the single live action. The extraction keeps that checked here; the
-  // residual (no client-side ceiling on `busy`) lives in BackendClient.qml, which
-  // this task does not own - the shutdown watchdog above bounds its only
-  // cross-cutting consequence, a quit that never happens.
+  // The audit refuted F-08 and downgraded it to low. The refresh now has its own
+  // ticket and never sets `busy`, actionName or closeWhenDone, so those always
+  // describe the user's own action. `busy` here is the worker being busy: it
+  // answers one request at a time, so the refresh waits for any request in flight.
   assert.equal(L.refreshAction({ ready: true, busy: false, preparing: false }), 'run');
   assert.equal(L.refreshAction({ ready: true, busy: true, preparing: false }), 'defer');
   assert.equal(L.refreshAction({ ready: true, busy: false, preparing: true }), 'defer');
@@ -907,8 +904,7 @@ test('a desktop-state refresh never clobbers a queued close or undo (F-08, refut
   assert.equal(L.refreshAction({ ready: false, busy: false, preparing: false }), 'skip');
   assert.equal(L.refreshAction({ ready: false, busy: true, preparing: true }), 'skip');
   assert.equal(L.refreshAction({}), 'skip');
-  // Escape while busy queues the close, and the refresh cannot turn that into a
-  // closeWhenDone:false "state" action, because it never runs while busy.
+  // Escape during the user's own action still queues the close behind it.
   const busyClose = { opening: false, shutdownRequested: false, busy: true, closing: false, shown: true, motion: true };
   assert.equal(L.closeMode(busyClose), 'deferToBusy');
   assert.equal(L.refreshAction({ ready: true, busy: true, preparing: false }), 'defer');

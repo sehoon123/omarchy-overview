@@ -15,16 +15,17 @@ time_left() {
 
 # `quickshell ipc call` (0.3.2) exits 255 with a line `No running instances for`
 # when no instance of this config runs on this display, and adds `Some instances
-# on other displays match:` when one runs elsewhere. Under a non-UTF-8 locale a Qt
-# warning comes first, so the reply is the last line. A live instance that is
-# busy or frozen never answers, and it still runs the request once it can.
-# A call that timed out after an earlier answer was cut short by the deadline,
-# so that answer stays the reason the press failed.
+# on other displays match:` when one runs elsewhere. Under a non-UTF-8 locale Qt
+# prints a warning on stdout before everything else, so the client runs under
+# C.UTF-8 and the reply is the last line. A live instance that is busy or frozen
+# never answers, and it still runs the request once it can. A call that timed
+# out after an earlier answer or IPC error was cut short by the deadline, so that
+# earlier outcome stays the reason the press failed.
 outcome=''
 ipc() {
   local out status=0
-  out="$(NO_COLOR=1 timeout "$left" quickshell ipc -p "$config" call overview "$@" 2>/dev/null)" || status=$?
-  ((status == 124)) && [[ $outcome == answered ]] && return
+  out="$(NO_COLOR=1 LC_ALL=C.UTF-8 timeout "$left" quickshell ipc -p "$config" call overview "$@" 2>/dev/null)" || status=$?
+  ((status == 124)) && [[ $outcome == answered || $outcome == ipc-error ]] && return
   reply=${out##*$'\n'}
   if ((status == 0)); then outcome=answered
   elif ((status == 124)); then outcome=no-answer

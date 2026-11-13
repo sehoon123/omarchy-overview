@@ -15,6 +15,7 @@ import shutil
 import signal
 import subprocess
 import tempfile
+import threading
 import time
 import unittest
 
@@ -68,7 +69,7 @@ if args[:1] != ['ipc']:
     sys.exit(0)
 now = time.time()
 if not alive(now):
-    print('No running instances for "%s/shell.qml"' % args[args.index('-p') + 1])
+    print('%s "%s/shell.qml"' % (world.get('no_instances', 'No running instances for'), args[args.index('-p') + 1]))
     sys.exit(255)
 if world.get('socket_error'):
     print(' ERROR quickshell.ipc: Socket Error QLocalSocket::ServerNotFoundError')
@@ -486,6 +487,47 @@ class ShutdownTests(LauncherTestCase):
                     self.assertEqual(0, press.rc, press.stderr)
                     self.assertLess(-early, SLACK, 'reported promptly once it was gone')
                 self.assertEqual([], box.notices(), 'ExecStop reports to the journal only')
+
+    def test_a_main_process_that_exited_is_gone_whatever_quickshell_prints(self):
+        with self.subTest('the unit passes ${MAINPID}'):
+            self.assertRegex(UNIT.read_text(), r'(?m)^ExecStop=\S+ --shutdown \$\{MAINPID\}$')
+        main, exited = subprocess.Popen(['/usr/bin/sleep', '1.5']), []
+        self.addCleanup(main.kill)
+
+        def reap():
+            main.wait()
+            exited.append(time.time())
+        threading.Thread(target=reap, daemon=True).start()
+        reworded = 'No instance is running for'
+        crashed = Box(self, running=False, no_instances=reworded)
+        stopping = Box(self, stops_in=1.5, no_instances=reworded)
+        crash, stop = wait_all([crashed.start('--shutdown', ''), stopping.start('--shutdown', str(main.pid))], 12)
+        with self.subTest('systemd already saw it exit'):
+            self.assertEqual(0, crash.rc, crash.stderr)
+            self.assertLess(crash.elapsed, 0.5, 'an empty ${MAINPID} means the main process exited')
+        with self.subTest('it exits during the stop'):
+            self.assertEqual(0, stop.rc, stop.stderr)
+            self.assertGreaterEqual(stop.ended, exited[0], 'reported gone only once the main process exited')
+            self.assertLess(stop.ended - exited[0], SLACK, 'reported promptly once it was gone')
+
+
+class QuickshellContractTests(unittest.TestCase):
+    def test_quickshell_still_reports_no_instance_the_way_the_launcher_reads_it(self):
+        quickshell = shutil.which('quickshell')
+        if quickshell is None:
+            self.skipTest('quickshell is not on PATH, so its `No running instances for` reply went unchecked')
+        root = Path(tempfile.mkdtemp(prefix='ov-contract-'))
+        self.addCleanup(shutil.rmtree, root, True)
+        # Without a shell.qml, quickshell 0.3.2 exits 255 with `Could not open config file` instead.
+        (root / 'shell.qml').touch()
+        run = subprocess.run([quickshell, 'ipc', '-p', str(root), 'call', 'overview', 'status'], capture_output=True,
+                             text=True, timeout=10, env={'PATH': '/usr/bin:/bin', 'HOME': str(root),
+                                                         'XDG_RUNTIME_DIR': str(root), 'NO_COLOR': '1'})
+        lines = run.stdout.splitlines()
+        self.assertEqual(255, run.returncode, run.stdout + run.stderr)
+        self.assertTrue([line for line in lines if line.startswith('No running instances for ')],
+                        f'quickshell changed its no-instance reply {lines}; ipc() in integrations/omarchy-overview '
+                        'and FAKE_QUICKSHELL read `No running instances for` as "not running"')
 
 
 if __name__ == '__main__':

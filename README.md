@@ -126,7 +126,9 @@ Omarchy Shell.
 `./validate` is the whole default suite and is entirely offline: it parses every
 QML file, runs two Node suites, the Python unit tests and the offscreen/software
 Qt test cases. It opens no window, starts no worker or helper process, and talks
-to neither Hyprland nor Quickshell. It currently covers:
+to neither Hyprland nor a running Quickshell. Its one `quickshell ipc` call goes
+to an empty temporary directory, where no instance can answer, and checks the
+reply the launcher reads as "not running". It currently covers:
 
 - open/close/shutdown/activation guards, including a shutdown that always
   terminates and a close animation that can only finish its own session;

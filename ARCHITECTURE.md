@@ -263,7 +263,11 @@ corrects the display; nothing is replayed.
 `./validate` is offline in the strict sense: it parses every QML file, runs two
 Node suites and the Python unit tests, and runs the Qt test cases under the
 offscreen platform with the software backend. It opens no window, spawns neither
-`worker.py` nor `capture_context.py`, and makes no Hyprland or Quickshell call.
+`worker.py` nor `capture_context.py`, and makes no Hyprland call. Its one
+Quickshell call is `quickshell ipc` against an empty temporary config and runtime
+directory, where no instance can answer. It checks the `No running instances for`
+reply that the launcher reads as "not running", and it is skipped when
+`quickshell` is not installed.
 Outside `tests/shell-harness/`, nothing under `tests/` instantiates a component
 that roots a `Process`, and the QML capture tests drive synthetic stream objects.
 The shell harness loads a copy of `shell.qml`, minus the panel's five

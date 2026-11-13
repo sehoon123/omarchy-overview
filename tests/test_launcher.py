@@ -302,6 +302,14 @@ class TogglePathTests(LauncherTestCase):
         self.assertEqual(3, box.count('calls.log', 'toggle'))
         self.assertEqual(1, box.count('applied.log', 'toggle'))
 
+    def test_the_notification_names_the_failure_under_any_locale(self):
+        boxes = [Box(self, lang=lang, socket_error=True) for lang in ('C.UTF-8', 'C')]
+        presses = wait_all([box.start('--app') for box in boxes])
+        for box, press in zip(boxes, presses):
+            with self.subTest(lang=box.env['LANG']):
+                self.assertVisibleFailure(box, press)
+                self.assertIn('Socket Error', box.notices()[0])
+
     def test_a_refusal_is_still_the_reason_when_the_deadline_cuts_the_next_ask_short(self):
         slow = [{'reply': 'closing', 'after': 1.5}]
         boxes = {'--app': Box(self, replies={'toggle': slow}), '--next': Box(self, replies={'navigateDesktop': slow})}

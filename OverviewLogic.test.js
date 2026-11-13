@@ -913,6 +913,11 @@ test('a desktop-state refresh never clobbers a queued close or undo (F-08, refut
   assert.equal(L.closeMode(busyClose), 'deferToBusy');
   assert.equal(L.refreshAction({ ready: true, busy: true, preparing: false }), 'defer');
 });
+test('a desktop action the worker cannot take now says why, truthfully', () => {
+  // Ready but refused: the one request lane is taken by the background refresh.
+  assert.equal(L.backendRefusal({ ready: true }), 'Overview is refreshing the desktop list; please try again');
+  assert.equal(L.backendRefusal({ ready: false }), 'Overview backend is restarting; please try again');
+});
 test('the close walkthrough: choose, churn, activate once, then a bounded shutdown', () => {
   // choose() stores the window and starts the animated close of session 7.
   assert.equal(L.closeMode({ opening: false, shutdownRequested: false, busy: false, closing: false,

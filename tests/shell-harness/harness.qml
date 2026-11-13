@@ -56,6 +56,7 @@ Item {
       tryCompare(scene.shell, "captureTopologyReady", true, 3000)
     }
     function cleanup() {
+      wait(0)
       loader.active = false
       for (const w of windows) w.destroy()
       wait(0)
@@ -67,6 +68,11 @@ Item {
     function answer(request, extra) { workerSays(Object.assign({ id: request.id, ok: true }, extra || {})) }
     function ipc() { return Quickshell.ipcHandlers.overview }
     function status() { return JSON.parse(ipc().status()) }
+    function click(kind, match) {
+      const z = status().zones.find(z => z.kind === kind && Object.keys(match).every(k => z[k] === match[k]))
+      verify(z, "no " + kind + " zone " + JSON.stringify(match))
+      mouseClick(scene, z.x + z.width / 2, z.y + z.height / 2)
+    }
     function grantContext() {
       const helper = process("capture_context.py")
       helper.stdout.read(JSON.stringify({ ok: true, outputs: [scene.output] }))
@@ -113,6 +119,68 @@ Item {
       tryVerify(() => scene.activated.length > 0, 1000)
       wait(100)
       compare(scene.activated, ["a1"])
+    }
+
+    // The refresh that every open sends is a background read: a slow or wedged
+    // worker must not keep the overlay, and its keyboard grab, on screen.
+    function test_closeHidesPromptlyWhileTheDesktopRefreshIsOutstanding_data() {
+      return [{ tag: "close" }, { tag: "toggle" }, { tag: "escape" }]
+    }
+    function test_closeHidesPromptlyWhileTheDesktopRefreshIsOutstanding(row) {
+      startWorker()
+      open()
+      const refresh = openRefresh()
+      if (row.tag === "close") compare(ipc().close(), "ok")
+      else if (row.tag === "toggle") compare(ipc().toggle(""), "ok")
+      else keyClick(Qt.Key_Escape)
+      tryCompare(scene.shell, "shown", false, 1000)
+      // Its late reply still updates the desktop list, and nothing else.
+      answer(refresh, { desktops: { "1": { label: "Mail" } }, order: [1, 2], perMonitor: false })
+      compare(scene.shell.shown, false)
+      compare(Quickshell.executed, [])
+      compare(status().desktopLabels, ["Mail", "Desktop 2"])
+    }
+    // Focusing a window never needs the worker, so the refresh cannot hold it up.
+    function test_choosingAWindowIsHonouredWhileTheDesktopRefreshIsOutstanding_data() {
+      return [{ tag: "enter", chosen: "a1" }, { tag: "click", chosen: "b2" }]
+    }
+    function test_choosingAWindowIsHonouredWhileTheDesktopRefreshIsOutstanding(row) {
+      startWorker()
+      open()
+      openRefresh()
+      tryCompare(scene.shell, "motionProgress", 1, 1000)
+      if (row.tag === "enter") keyClick(Qt.Key_Return)
+      else click("window", { address: row.chosen })
+      tryCompare(scene.shell, "shown", false, 1000)
+      tryVerify(() => scene.activated.length > 0, 1000)
+      wait(100)
+      compare(scene.activated, [row.chosen])
+    }
+    // A refresh the user never asked for does not fail as an action they took.
+    function test_aLostRefreshIsJournaledNotReportedAsAFailedAction() {
+      startWorker()
+      open()
+      openRefresh()
+      ignoreWarning(/desktop refresh failed/)
+      worker().exited(1, 0)
+      compare(scene.shell.shown, true)
+      compare(status().message, "")
+    }
+    // A desktop switch does need the worker, which answers one request at a time:
+    // the click is refused with the true reason, and works once the refresh is in.
+    function test_aDesktopClickDuringTheRefreshIsRefusedWithTheTrueReason() {
+      startWorker()
+      open()
+      const refresh = openRefresh()
+      tryCompare(scene.shell, "motionProgress", 1, 1000)
+      const sent = requests().length
+      click("desktop", { id: 2 })
+      compare(status().message, "Overview is refreshing the desktop list; please try again")
+      compare(requests().length, sent)
+      compare(scene.shell.shown, true)
+      answer(refresh)
+      click("desktop", { id: 2 })
+      compare(requests().pop().args, ["switch", "2"])
     }
   }
 }

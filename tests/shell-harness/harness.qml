@@ -194,6 +194,31 @@ Item {
       compare(scene.shell.shown, false)
       compare(notices(), [])
     }
+    function clickBackground() {
+      const x = 8, y = scene.height - 8
+      verify(!status().zones.some(z => x >= z.x && y >= z.y && x < z.x + z.width && y < z.y + z.height),
+        "nothing but the background is under the corner")
+      mouseClick(scene, x, y)
+    }
+    function test_theCloseZonesCloseWhileAnActionIsUnanswered_data() {
+      return [{ tag: "×" }, { tag: "background of All" }]
+    }
+    function test_theCloseZonesCloseWhileAnActionIsUnanswered(row) {
+      startWorker()
+      open()
+      answer(openRefresh())
+      tryCompare(scene.shell, "motionProgress", 1, 1000)
+      if (row.tag === "background of All") click("all", {})
+      click("add", {})
+      const create = requests().pop()
+      compare(create.args, ["create"])
+      if (row.tag === "×") click("exit", {})
+      else clickBackground()
+      tryCompare(scene.shell, "shown", false, 400)
+      answer(create, { created: 3, message: "Desktop 3 added", order: [1, 2, 3] })
+      compare(scene.shell.shown, false)
+      compare(notices(), [])
+    }
     function test_escapeClosesWhenTheSearchFieldCannotTakeTheKeyboard_data() {
       return [{ tag: "reopened while an action is unanswered" }, { tag: "query cleared while an action is unanswered" },
         { tag: "Ctrl+F in Quick Look" }]

@@ -148,6 +148,7 @@ sys.exit(0 if mode == 'locked' else 1)
 FAKE_CONTROLLER = r'''import fcntl, json, signal, sys, time
 from pathlib import Path
 BOX = Path(__file__).resolve().parents[3]
+world = json.loads((BOX / 'world.json').read_text())
 def log(*fields):
     with open(BOX / 'controller.log', 'a') as f:
         f.write(json.dumps([time.time(), *fields]) + '\n')
@@ -167,6 +168,9 @@ with open(BOX / 'actions.lock', 'a') as lock:
                 print('{"ok": false, "error": "Another overview action is still running"}')
                 stop(1)
             time.sleep(0.02)
+    if 'controller_error' in world:
+        print(json.dumps({'ok': False, 'error': world['controller_error']}))
+        stop(1)
     log('fired', *sys.argv[1:])
     time.sleep(0.06)
 log('end')
@@ -303,13 +307,16 @@ class TogglePathTests(LauncherTestCase):
         self.assertEqual(3, box.count('calls.log', 'toggle'))
         self.assertEqual(1, box.count('applied.log', 'toggle'))
 
-    def test_the_notification_names_the_failure_under_any_locale(self):
+    def test_an_ipc_error_is_notified_in_a_fixed_sentence_and_journaled_under_any_locale(self):
+        # quickshell's own error lines can name the config path, which a
+        # notification would keep in the notification history.
         boxes = [Box(self, lang=lang, socket_error=True) for lang in ('C.UTF-8', 'C')]
         presses = wait_all([box.start('--app') for box in boxes])
         for box, press in zip(boxes, presses):
             with self.subTest(lang=box.env['LANG']):
                 self.assertVisibleFailure(box, press)
-                self.assertIn('Socket Error', box.notices()[0])
+                self.assertEqual(['Overview could not be reached'], box.notices())
+                self.assertIn('Socket Error', press.stderr)
 
     def test_a_retry_that_gets_no_answer_is_reported_as_unanswered(self):
         # Overview still runs a request it gave no answer to, so the press may yet
@@ -431,22 +438,28 @@ class StepPathTests(LauncherTestCase):
                 self.assertEqual([], box.lines('controller.log'), 'only `No running instances` proves Overview gone')
                 self.assertVisibleFailure(box, press)
 
-    def test_a_cli_switch_that_fails_says_so(self):
-        boxes = {
-            'it cannot take the action lock': Box(self, running=False),
-            'it outlives the deadline': Box(self, replies={'navigateDesktop': [{'reply': 'unavailable', 'after': 1.0}]}),
+    def test_a_cli_switch_that_fails_says_so_in_a_fixed_sentence(self):
+        # controller.py's error can quote Hyprland, a workspace name included.
+        cases = {
+            'it cannot take the action lock': (Box(self, running=False), True,
+                                               'The desktop switch failed', 'Another overview action is still running'),
+            'it outlives the deadline': (Box(self, replies={'navigateDesktop': [{'reply': 'unavailable', 'after': 1.0}]}),
+                                         True, 'The desktop switch did not finish within 2 seconds', ''),
+            'Hyprland refuses it': (Box(self, running=False, controller_error='Hyprland: no workspace named Payroll'),
+                                    False, 'The desktop switch failed', 'no workspace named Payroll'),
         }
-        holders = []
-        for box in boxes.values():
-            holders.append(open(box.root / 'actions.lock', 'a'))
-            self.addCleanup(holders[-1].close)
-            fcntl.flock(holders[-1], fcntl.LOCK_EX)
-        presses = wait_all([box.start('--next') for box in boxes.values()])
-        for (name, box), press in zip(boxes.items(), presses):
+        for box, locked, _, _ in cases.values():
+            if locked:
+                holder = open(box.root / 'actions.lock', 'a')
+                self.addCleanup(holder.close)
+                fcntl.flock(holder, fcntl.LOCK_EX)
+        presses = wait_all([box.start('--next') for box, _, _, _ in cases.values()])
+        for (name, (box, _, sentence, detail)), press in zip(cases.items(), presses):
             with self.subTest(name):
                 self.assertEqual(1, len(box.controller('start')), 'the CLI switch ran')
                 self.assertVisibleFailure(box, press)
-        self.assertIn('Another overview action is still running', str(boxes['it cannot take the action lock'].notices()))
+                self.assertEqual([sentence], box.notices())
+                self.assertIn(detail, press.stderr, 'the journal keeps the reason')
 
     def test_a_held_step_key_never_stacks_switches(self):
         box = Box(self, running=False)

@@ -363,6 +363,8 @@ ShellRoot {
         report("Overview action failed", "The action did not complete")
         return
       }
+      // A hidden panel shows no toast; the launcher's step stopped at the `ok`.
+      if (!shown) { report("Overview action failed", result.error || "The action did not complete"); return }
       flash(result.error || "Could not complete the action")
       return
     }

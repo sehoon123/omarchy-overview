@@ -4,7 +4,8 @@ A live instance answers with exit 0 and the handler's reply, but while it is bus
 or frozen the client simply waits. Every request a live instance has received
 still takes effect, even after the client stopped waiting. An instance on another
 display adds `Some instances on other displays match:`, and a non-UTF-8 locale
-puts a Qt warning before everything the client prints.
+puts a Qt warning before everything the client prints. `--daemonize` leaves a
+daemon behind that keeps every descriptor it inherited.
 """
 import fcntl
 import json
@@ -27,7 +28,7 @@ SLACK = 0.75
 HARNESS_LIMIT = 8.0
 
 FAKE_QUICKSHELL = r'''#!/usr/bin/python3 -IS
-import json, sys, time
+import json, os, sys, time
 from pathlib import Path
 BOX = Path(__file__).resolve().parents[1]
 world = json.loads((BOX / 'world.json').read_text())
@@ -66,6 +67,9 @@ if 'utf8' not in locale.lower().replace('-', ''):
     print('Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.')
 if args[:1] != ['ipc']:
     log('starts.log', time.time(), 'daemonize')
+    if os.fork() == 0:
+        time.sleep(5)
+        os._exit(0)
     sys.exit(0)
 now = time.time()
 if not alive(now):
@@ -307,13 +311,15 @@ class TogglePathTests(LauncherTestCase):
                 self.assertVisibleFailure(box, press)
                 self.assertIn('closing', box.notices()[0], 'Overview answered, so its refusal is why')
 
-    def test_a_stopped_overview_is_started_then_toggled_once(self):
+    def test_a_stopped_overview_is_started_then_toggled_once_per_press(self):
         for systemctl in ('ok', 'fail'):
             with self.subTest(systemctl=systemctl):
                 box = Box(self, running=False, systemctl=systemctl, starts_in=0.1)
                 press = box.press('--app')
                 self.assertQuietSuccess(box, press)
                 self.assertEqual(1, box.count('applied.log', 'toggle'))
+                self.assertQuietSuccess(box, box.press('--app'))
+                self.assertEqual(2, box.count('applied.log', 'toggle'), 'the started daemon holds no press lock')
 
     def test_an_overview_that_does_not_answer_fails_visibly_and_is_never_retried(self):
         box = Box(self, replies={'toggle': [{'after': 'never'}]})

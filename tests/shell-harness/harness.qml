@@ -230,6 +230,24 @@ Item {
         compare(notices(), ["notify-send: That desktop is no longer available"])
       }
     }
+    function test_escapeCancelsADragOnce() {
+      startWorker()
+      open()
+      answer(openRefresh())
+      tryCompare(scene.shell, "motionProgress", 1, 1000)
+      const z = status().zones.find(z => z.kind === "window")
+      const x = z.x + z.width / 2, y = z.y + z.height / 2
+      mousePress(scene, x, y)
+      mouseMove(scene, x + 40, y + 40)
+      mouseMove(scene, x + 80, y + 80)
+      compare(status().dragging, true)
+      const sent = requests().length
+      keyClick(Qt.Key_Escape)
+      compare(status().dragging, false)
+      compare(scene.shell.shown, true)
+      mouseRelease(scene, x + 80, y + 80)
+      compare(requests().length, sent)
+    }
     function test_aDesktopClickDuringTheRefreshIsRefusedWithTheTrueReason() {
       startWorker()
       open()

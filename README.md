@@ -101,6 +101,15 @@ reason it was refused (`invalid`, `shutdown`, `closing`, `shown`, `opening`,
 A refusal has no side effect, so the launcher only falls back to a real workspace
 switch when Overview is not running or answered `unavailable`.
 
+The launcher gives up on a press after 2 seconds and then shows a notification
+that says why. A busy Overview still runs a request after the launcher stopped
+waiting for it, so the launcher never retries that request, never starts the
+service for it and never replaces it with a workspace switch. A press that
+arrives while another one is in flight is dropped, and a held `--next` or
+`--previous` key runs one step at a time. `--shutdown` is the service's
+`ExecStop`. It exits 0 only once `quickshell ipc` reports that no instance runs
+on any display, and otherwise exits 1 after 7 seconds.
+
 Open settings with the **Settings** button at the bottom right of the window grid.
 Preferences are in `~/.config/omarchy/overview/settings.json`. Public theme tokens are read from
 `~/.config/omarchy/current/theme/colors.toml`. Existing preference keys are
@@ -139,7 +148,11 @@ to neither Hyprland nor Quickshell. It currently covers:
 - the Python guard paths — malformed or missing compositor fields, transport
   failures, corrupt saved desktop order, and bounded error text;
 - layout geometry at degenerate and extreme sizes and aspect ratios, plus the
-  card, desktop-strip and input components.
+  card, desktop-strip and input components;
+- `integrations/omarchy-overview` against fake `quickshell`, `systemctl` and
+  `notify-send`: the 2-second deadline, one toggle per press, no workspace
+  switch behind a slow Overview, a held step key, and a `--shutdown` that
+  reports the process gone only once it is.
 
 It never removes a real output and never tries to reproduce a compositor crash.
 

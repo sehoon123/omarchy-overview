@@ -75,6 +75,15 @@ A repeated identical reason within 10 seconds is shown once. A reason ending in
 a field name in parentheses, such as `(solitaryBlockedBy)`, names the compositor
 field that changed shape.
 
+If the launcher itself cannot finish a press within 2 seconds, it shows one
+notification, such as **Overview did not answer within 2 seconds**, and writes
+the same line to stderr. A busy or frozen Overview can still act on that press
+later, so the launcher does not retry it. If Overview keeps not answering,
+restart it with `systemctl --user restart sehun-overview.service`. The restart
+runs the service's `ExecStop`, `omarchy-overview --shutdown`, which waits up to
+7 seconds for Overview's own shutdown. It exits 1 if the process is still alive
+by then, and systemd then terminates the process.
+
 Expected status while **hidden**:
 
 - `captureBackend`: `native-window`

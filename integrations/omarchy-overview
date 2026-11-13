@@ -109,7 +109,15 @@ if [[ -n $direction ]]; then
     no-answer|ipc-error) fail_ipc ;;
   esac
   time_left || fail_press "Overview did not switch desktops within $limit seconds"
-  out=$(timeout "$left" /usr/bin/python3 "$config/controller.py" step "$direction") && exit 0 || status=$?
+  # A TERM or INT that ends this press ends the switch too. The switch runs
+  # asynchronously, so it ignores INT, and both traps pass on TERM, which
+  # `timeout` hands to controller.py.
+  end_press() { kill $! 2>/dev/null || true; wait $! || true; exit $((128 + $1)); }
+  trap 'end_press 15' TERM
+  trap 'end_press 2' INT
+  exec 3< <(exec timeout "$left" /usr/bin/python3 "$config/controller.py" step "$direction")
+  read -r out <&3 || true
+  wait $! && exit 0 || status=$?
   ((status == 124)) && fail_press "The desktop switch did not finish within $limit seconds"
   fail_press "The desktop switch failed" "${out:-controller.py exited $status}"
 fi

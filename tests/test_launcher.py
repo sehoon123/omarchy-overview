@@ -311,14 +311,19 @@ class TogglePathTests(LauncherTestCase):
                 self.assertVisibleFailure(box, press)
                 self.assertIn('Socket Error', box.notices()[0])
 
-    def test_a_refusal_is_still_the_reason_when_the_deadline_cuts_the_next_ask_short(self):
-        slow = [{'reply': 'closing', 'after': 1.5}]
-        boxes = {'--app': Box(self, replies={'toggle': slow}), '--next': Box(self, replies={'navigateDesktop': slow})}
-        presses = wait_all([box.start(args) for args, box in boxes.items()])
-        for (args, box), press in zip(boxes.items(), presses):
-            with self.subTest(args):
+    def test_a_retry_that_gets_no_answer_is_reported_as_unanswered(self):
+        # Overview still runs a request it gave no answer to, so the press may yet
+        # take effect: the refusal before that request is not why the press failed.
+        replies = {'the retry never answers': ['closing', {'after': 'never'}],
+                   'the deadline cuts the retry short': [{'reply': 'closing', 'after': 1.5}]}
+        cases = [(name, args, Box(self, replies={call: steps}))
+                 for name, steps in replies.items()
+                 for args, call in (('--app', 'toggle'), ('--next', 'navigateDesktop'))]
+        presses = wait_all([box.start(args) for _, args, box in cases])
+        for (name, args, box), press in zip(cases, presses):
+            with self.subTest(name, args=args):
                 self.assertVisibleFailure(box, press)
-                self.assertIn('closing', box.notices()[0], 'Overview answered, so its refusal is why')
+                self.assertEqual(['Overview did not answer within 2 seconds (last answer: closing)'], box.notices())
 
     def test_a_stopped_overview_is_started_then_toggled_once_per_press(self):
         for systemctl in ('ok', 'fail'):

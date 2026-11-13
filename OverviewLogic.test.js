@@ -138,7 +138,7 @@ test('openOverview refusals are reported in precedence order', () => {
   // PINS F-06 - corrected by F-06 fix: today shell.qml only checks truthiness, so the reason never reaches the user.
   assert.ok(L.openBlocked({ opening: true }) && !L.openBlocked({}));
 });
-test('closeOverview picks one of four modes', () => {
+test('closeOverview picks one of three modes', () => {
   const state = { opening: false, shutdownRequested: false, busy: false, closing: false, shown: true, motion: true };
   assert.equal(L.closeMode(state), 'animate');
   assert.equal(L.closeMode({ ...state, motion: false }), 'immediate');
@@ -146,9 +146,11 @@ test('closeOverview picks one of four modes', () => {
   // PINS F-06 - corrected by F-06 fix: closing an in-flight open is immediate and silent.
   assert.equal(L.closeMode({ ...state, opening: true, busy: true, closing: true }), 'immediate');
   assert.equal(L.closeMode({ ...state, shutdownRequested: true, busy: true, closing: true }), 'immediate');
-  // PINS F-08 - corrected by F-08 fix: a wedged action defers the close instead of performing it.
-  assert.equal(L.closeMode({ ...state, busy: true, closing: true }), 'deferToBusy');
-  assert.equal(L.closeMode({ ...state, busy: true }), 'deferToBusy');
+  // An unanswered desktop action never holds the panel: the close happens now and
+  // the action's reply arrives hidden.
+  assert.equal(L.closeMode({ ...state, busy: true }), 'animate');
+  assert.equal(L.closeMode({ ...state, busy: true, motion: false }), 'immediate');
+  assert.equal(L.closeMode({ ...state, busy: true, closing: true }), 'ignore');
   // F-07 residual fixed: a close arriving during a close is still ignored, which
   // is correct, but `closing` is no longer unbounded - the close watchdog below
   // finishes the session even when the exit motion never completes, so `closing`
@@ -1029,8 +1031,8 @@ test('a call arriving mid-transition is refused with the documented value', () =
   // `preparing` is `opening` under the name status() reports; same cell.
   assert.equal(L.ipcGuard({ call: 'navigateDesktop', arg: 'next',
     state: { ...hidden, opening: true, preparing: true } }).reply, 'opening');
-  // `busy` is a desktop action in flight: an open is not blocked by it, and a
-  // close is queued (closeWhenDone), which is an acceptance and not a refusal.
+  // `busy` is a desktop action in flight: it blocks neither an open nor a close,
+  // and the close happens at once.
   const busy = { ...open, busy: true };
   for (const call of ['setQuery', 'togglePreview', 'showSettings', 'navigateDesktop'])
     assert.equal(replyOf(call, busy), 'busy', call);

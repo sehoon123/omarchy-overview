@@ -171,6 +171,65 @@ Item {
       compare(scene.shell.shown, true)
       compare(status().message, "")
     }
+    function openWithAnUnansweredAction(kind, match) {
+      startWorker()
+      open()
+      answer(openRefresh())
+      tryCompare(scene.shell, "motionProgress", 1, 1000)
+      click(kind, match)
+      compare(scene.shell.busy, true)
+      return requests().pop()
+    }
+    function test_aCloseDuringAnUnansweredActionHidesWithinTheCloseWatchdog_data() {
+      return [{ tag: "close" }, { tag: "toggle" }, { tag: "escape" }]
+    }
+    function test_aCloseDuringAnUnansweredActionHidesWithinTheCloseWatchdog(row) {
+      const create = openWithAnUnansweredAction("add", {})
+      compare(create.args, ["create"])
+      if (row.tag === "close") compare(ipc().close(), "ok")
+      else if (row.tag === "toggle") compare(ipc().toggle(""), "ok")
+      else keyClick(Qt.Key_Escape)
+      tryCompare(scene.shell, "shown", false, 400)
+      answer(create, { created: 3, message: "Desktop 3 added", order: [1, 2, 3] })
+      compare(scene.shell.shown, false)
+      compare(notices(), [])
+    }
+    function test_aLateFailureAfterTheCloseIsNotifiedOnce() {
+      const create = openWithAnUnansweredAction("add", {})
+      keyClick(Qt.Key_Escape)
+      tryCompare(scene.shell, "shown", false, 400)
+      ignoreWarning(/action create failed/)
+      workerSays({ id: create.id, ok: false, error: "Hyprland did not confirm the change; please try again" })
+      compare(notices(), ["notify-send: Hyprland did not confirm the change; please try again"])
+    }
+    function test_aLateReplyInAReopenedSessionDoesNotActOnIt_data() {
+      return [{ tag: "ok" }, { tag: "failure" }]
+    }
+    function test_aLateReplyInAReopenedSessionDoesNotActOnIt(row) {
+      const step = openWithAnUnansweredAction("desktop", { id: 2 })
+      compare(step.args, ["switch", "2"])
+      keyClick(Qt.Key_Escape)
+      tryCompare(scene.shell, "shown", false, 400)
+      open()
+      if (row.tag === "ok") {
+        answer(step, { desktops: { "1": { label: "Mail" } }, order: [1, 2], perMonitor: false,
+          message: "Moved to Mail", undo: { moves: [], order: [1, 2] } })
+      } else {
+        ignoreWarning(/action switch failed/)
+        workerSays({ id: step.id, ok: false, error: "That desktop is no longer available" })
+      }
+      wait(100)
+      compare(scene.shell.shown, true)
+      compare(status().message, "")
+      compare(scene.shell.undoRecord, null)
+      compare(status().desktop, 1)
+      if (row.tag === "ok") {
+        compare(status().desktopLabels, ["Mail", "Desktop 2"])
+        compare(notices(), [])
+      } else {
+        compare(notices(), ["notify-send: That desktop is no longer available"])
+      }
+    }
     function test_aDesktopClickDuringTheRefreshIsRefusedWithTheTrueReason() {
       startWorker()
       open()

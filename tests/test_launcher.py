@@ -461,6 +461,28 @@ class StepPathTests(LauncherTestCase):
                 self.assertEqual([sentence], box.notices())
                 self.assertIn(detail, press.stderr, 'the journal keeps the reason')
 
+    def test_a_press_stopped_by_a_signal_stops_its_cli_switch(self):
+        for sig, status in ((signal.SIGTERM, 143), (signal.SIGINT, 130)):
+            with self.subTest(sig.name):
+                box = Box(self, running=False)
+                holder = open(box.root / 'actions.lock', 'a')
+                self.addCleanup(holder.close)
+                fcntl.flock(holder, fcntl.LOCK_EX)
+                press = box.start('--next')
+                until = time.time() + KEY_DEADLINE
+                while not box.controller('start') and time.time() < until:
+                    time.sleep(0.01)
+                self.assertTrue(box.controller('start'), 'the CLI switch is waiting for the action lock')
+                os.kill(press.proc.pid, sig)
+                time.sleep(0.2)
+                holder.close()
+                wait_all([press])
+                time.sleep(0.3)
+                self.assertEqual([], box.controller('fired'), 'the switch stops with the press')
+                self.assertEqual(1, len(box.controller('end')))
+                self.assertEqual(status, press.rc, press.stderr)
+                self.assertEqual([], box.notices())
+
     def test_a_held_step_key_never_stacks_switches(self):
         box = Box(self, running=False)
         presses = []

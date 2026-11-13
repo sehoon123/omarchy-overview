@@ -1,0 +1,5 @@
+module Quickshell
+singleton Quickshell 1.0 QuickshellSingleton.qml
+ShellRoot 1.0 ShellRoot.qml
+PanelWindow 1.0 PanelWindow.qml
+ExclusionMode 1.0 ExclusionMode.qml

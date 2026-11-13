@@ -13,3 +13,6 @@ node OverviewLogic.test.js
 /usr/bin/python3 -m unittest discover -s tests -p 'test_*.py' -v
 QT_QPA_PLATFORM=offscreen QT_IM_MODULE=compose QT_QUICK_BACKEND=software \
   /usr/lib/qt6/bin/qmltestrunner -input tests -o -,txt
+tests/shell-harness/build
+QT_QPA_PLATFORM=offscreen QT_IM_MODULE=compose QT_QUICK_BACKEND=software \
+  /usr/lib/qt6/bin/qmltestrunner -import tests/shell-harness/stubs -input tests/shell-harness/harness.qml -o -,txt

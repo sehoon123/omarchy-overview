@@ -50,7 +50,7 @@ Item {
     function resetClient(bridge) {
       bridge.processExited()   // the documented loss path clears pending and ready
       bridge.cancelRestart()
-      bridge.restarts = 0; bridge.sequence = 0
+      bridge.losses = 0; bridge.unansweredLosses = 0; bridge.sequence = 0
       bridge.completedCount = 0; bridge.lastElapsedMs = 0
     }
     function init() {
@@ -69,7 +69,7 @@ Item {
     function test_autoStartDefaultIsTrue() {
       compare(defaults.autoStart, true)
       compare(defaults.ready, false)
-      compare(defaults.restarts, 0)
+      compare(defaults.losses, 0)
       compare(defaults.maxRestarts, 5)
       compare(defaults.restartDelayMs, 250)
       compare(defaults.replyTimeoutMs, 20000)
@@ -229,7 +229,7 @@ Item {
       compare(client.ready, false)
       compare(writes.count, 1)              // nothing was re-sent
       compare(client.completedCount, 0)     // no reply was ever received
-      compare(client.restarts, 1)
+      compare(client.losses, 1)
       verify(client.restarting)             // a new worker is scheduled...
       compare(starts.count, 0)              // ...but not started yet
       // A reply that arrives after the loss completes nothing, and no request is
@@ -240,7 +240,7 @@ Item {
       compare(writes.count, 1)
       // A second exit with nothing outstanding stays quiet.
       client.processExited()
-      compare(finished.count, 1); compare(client.restarts, 2)
+      compare(finished.count, 1); compare(client.losses, 2)
     }
     function test_idsStayMonotonicAcrossARestart() {
       fast.receive(harness.handshake)
@@ -271,13 +271,35 @@ Item {
       const delays = []
       for (let loss = 1; loss <= 7; loss++) {
         backoff.processExited()
-        compare(backoff.restarts, loss)
+        compare(backoff.losses, loss)
         compare(backoff.restarting, loss <= backoff.maxRestarts)
+        compare(backoff.gaveUp, loss > backoff.maxRestarts)
         delays.push(backoff.restartDelayMs)
       }
       compare(JSON.stringify(delays), JSON.stringify([500, 1000, 2000, 4000, 5000, 5000, 5000]))
       verify(!backoff.restarting)
       compare(backoffStarts.count, 0)       // nothing fired inside this synchronous loop
+    }
+    function test_aWorkerThatAnswersBetweenLossesIsAlwaysRestarted() {
+      for (let loss = 1; loss <= fast.maxRestarts + 2; loss++) {
+        fast.receive(harness.handshake)
+        fast.receive(harness.reply(fast.request(["state"], {}, "")))
+        fast.processExited()
+        verify(fast.restarting, "loss " + loss + " schedules a restart")
+        verify(!fast.gaveUp)
+        tryCompare(fastStarts, "count", loss)
+      }
+      compare(fast.losses, fast.maxRestarts + 2)
+    }
+    function test_anAnswerResetsTheRestartBackoff() {
+      backoff.processExited()
+      compare(backoff.restartDelayMs, 500)
+      backoff.cancelRestart()
+      backoff.receive(harness.handshake)
+      backoff.receive(harness.reply(backoff.request(["state"], {}, "")))
+      backoff.processExited()
+      compare(backoff.restartDelayMs, 500)
+      verify(backoff.restarting)
     }
     // A worker that is wedged but
     // alive reports no exit, so without a ceiling the ticket stays pending and
@@ -295,7 +317,7 @@ Item {
       compare(wedgedWorker.outstanding, false)
       compare(wedgedWorker.completedCount, 0)
       // The worker is left running: no exit is faked, no restart is scheduled.
-      compare(wedgedWorker.restarts, 0)
+      compare(wedgedWorker.losses, 0)
       compare(wedgedWorker.restarting, false)
       compare(wedgedStarts.count, 0)
       verify(wedgedWorker.ready)
@@ -316,7 +338,7 @@ Item {
       compare(wedgedFinished.count, 1)      // the disarmed watchdog stays quiet
       compare(wedgedWorker.completedCount, 1)
       compare(wedgedWorker.lastElapsedMs, 3)
-      compare(wedgedWorker.restarts, 0)
+      compare(wedgedWorker.losses, 0)
     }
   }
 }

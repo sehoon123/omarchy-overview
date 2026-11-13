@@ -193,13 +193,23 @@ inside its own cell, never into a neighbour's.
 
 Window activation uses the Wayland activation path at a cold start and the
 address-targeted Hyprland dispatcher when metadata is ready; it runs after the
-closing animation, not during capture. User-requested state, create, move,
-switch, step, reorder, remove and undo actions use the resident Python worker and
-its serial action lock; a move carries a grouped window's members in its undo
+closing animation, not during capture. User-requested create, move, switch,
+step, reorder, remove and undo actions use the resident Python worker and its
+serial action lock; a move carries a grouped window's members in its undo
 record, but there is no bulk "move this desktop's windows" action. Mutating
 requests are not replayed after worker loss, and a request that never answers is
-failed by the client after 20 s so the UI cannot stay busy forever. Preview
+failed by the client after 20 s so the UI cannot stay busy forever. A lost
+worker is restarted after a growing delay; once it has been lost six times with
+no answer in between, the client stops restarting it, and a desktop action then
+says the backend stopped and that restarting Overview is the cure. Preview
 capture never invokes these actions and never scrolls a viewport.
+
+The read-only `state` refresh that follows every open, worker start and
+workspace event uses the same worker, which answers one request at a time, but
+it is not a user action: it never sets `busy`, so it cannot hold a close, drop a
+key or block choosing a window, and its failure goes to the journal. A desktop
+action clicked while it is in flight is refused with that reason instead of
+queued.
 
 Workspace identity is a positive numeric selector or `name:<name>`, not a named
 workspace's temporary negative ID. Removal moves windows rather than closing
@@ -253,9 +263,14 @@ corrects the display; nothing is replayed.
 `./validate` is offline in the strict sense: it parses every QML file, runs two
 Node suites and the Python unit tests, and runs the Qt test cases under the
 offscreen platform with the software backend. It opens no window, spawns neither
-`worker.py` nor `capture_context.py`, and makes no Hyprland or Quickshell call —
-nothing under `tests/` instantiates a component that roots a `Process`. The QML
-capture tests drive synthetic stream objects instead.
+`worker.py` nor `capture_context.py`, and makes no Hyprland or Quickshell call.
+Outside `tests/shell-harness/`, nothing under `tests/` instantiates a component
+that roots a `Process`, and the QML capture tests drive synthetic stream objects.
+The shell harness loads a copy of `shell.qml`, minus the panel's five
+compositor-only lines, against pure-QML stand-ins for Quickshell's modules
+(`tests/shell-harness/stubs`). Their `Process` records what it is asked and
+cannot start anything, so the test plays the worker, the capture-context helper,
+the IPC caller and the compositor's capture streams.
 
 What it covers today: lifecycle guard predicates (open, present, settle, close,
 shutdown, activation handoff, recheck) and the full IPC guard-return matrix; the
@@ -265,14 +280,15 @@ identity (nothing while disabled, one shared source per window, synchronous
 release before destruction, no retry, no address-reuse inheritance, plan held
 while closing); the opening-helper protocol (late/duplicate/oversized/malformed
 replies, five distinct failure reasons, bounded drain); the worker protocol client
-(framing, single flight, no replay after loss, capped restart backoff, reply
-timeout); settings validation and persistence (defaults, rejected values,
+(framing, single flight, no replay after loss, a capped restart backoff whose
+budget an answering worker earns back, reply timeout); settings validation and persistence (defaults, rejected values,
 unreadable and newer documents, a read-only file, preserved unknown keys); the
 Python guard paths (transport failures and bounded error text, malformed monitor,
 workspace, client and layer fields, corrupt saved desktop order, undo-record
 validation, worker protocol errors); `Layout.js` at degenerate and extreme sizes
-and ratios; and the card, desktop-strip, search and drag components, including
-that the preview components take no pointer grab and load no file.
+and ratios; the card, desktop-strip, search and drag components, including
+that the preview components take no pointer grab and load no file; and
+`shell.qml` end to end through IPC, keyboard and pointer input.
 
 `tests/verify_native_previews.py`, `tests/verify_ui.py` and `tests/verify_live.py`
 are **opt-in and not part of `./validate`**. `verify_native_previews.py --run`

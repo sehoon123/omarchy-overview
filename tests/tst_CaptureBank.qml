@@ -161,6 +161,18 @@ Item {
       compare(revived.failed, false); compare(revived.modelData, first)
       compare(bank.frameCount, 2); compare(bank.viewCount, 2)
     }
+    function test_aStoppedProducerIsKeptThroughPlanChurnUntilTheSessionEnds() {
+      const stopped = bank.lookup("first")
+      stopped.failed = true
+      bank.addresses = ["second"]; wait(0)
+      verify(bank.lookup("first") === stopped, "the plan change released the stopped producer")
+      bank.addresses = ["first", "second"]; wait(0)
+      verify(bank.lookup("first") === stopped, "the stopped producer was replaced")
+      compare(scene.created, 0); compare(bank.frameCount, 1)
+      sourceModel.values = [second]; wait(0)
+      compare(bank.lookup("first"), null)
+      tryCompare(scene, "destroyed", 1)
+    }
     function test_closingKeepsSourcesItCouldNotRecreate() {
       const saved = bank.lookup("first")
       saved.cachedFrame = 7

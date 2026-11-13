@@ -24,7 +24,7 @@ Item {
 
   onAllowStartChanged: if (allowStart) start()
   onCaptureEnabledChanged: {
-    if (!captureEnabled) { release(); failed = false }
+    if (!captureEnabled) release()
     else start()
   }
   onCaptureSourceChanged: { release(); failed = false; start() }

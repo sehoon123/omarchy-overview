@@ -133,13 +133,17 @@ to neither Hyprland nor Quickshell. It currently covers:
 - opening-helper protocol failures: late, duplicate, oversized and malformed
   replies, distinct refusal reasons, and a helper that never reports its exit;
 - the worker protocol client: framing, one request in flight, no replay after
-  worker loss, capped restart backoff, and a per-request reply timeout;
+  worker loss, a capped restart backoff whose budget an answering worker earns
+  back, and a per-request reply timeout;
 - settings validation and persistence, including unreadable and newer documents,
   a read-only file, and preserved unknown keys;
 - the Python guard paths — malformed or missing compositor fields, transport
   failures, corrupt saved desktop order, and bounded error text;
 - layout geometry at degenerate and extreme sizes and aspect ratios, plus the
-  card, desktop-strip and input components.
+  card, desktop-strip and input components;
+- `shell.qml` itself, loaded against stand-in Quickshell modules
+  (`tests/shell-harness/`), with the test playing the worker, the opening
+  helper, the IPC caller and the capture streams.
 
 It never removes a real output and never tries to reproduce a compositor crash.
 

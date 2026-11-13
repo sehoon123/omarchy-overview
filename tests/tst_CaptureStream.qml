@@ -100,7 +100,7 @@ Item {
       capture.live = false; capture.live = true
       wait(100); compare(scene.created, 1)
       capture.captureEnabled = false; capture.captureEnabled = true
-      compare(scene.created, 2); compare(capture.failed, false)
+      compare(scene.created, 1); compare(capture.failed, true)
     }
     function test_releaseIsSynchronousAndTheStreamIsNotLeaked() {
       capture.captureEnabled = true
@@ -180,26 +180,19 @@ Item {
       wait(0)
       compare(scene.created, 1); compare(capture.stream, null)
     }
-    function test_aNewSessionRecoversTheStreamTheCardPointsAt() {
-      // The card says "Live preview stopped \u00b7 reopen Overview to retry"
-      // (Logic.previewReason), so reopening must be a real cure: a new session
-      // rebuilds the capture (captureEnabled cycles per session, and CaptureBank
-      // recreates the entry), and so does a replaced source.
+    function test_onlyANewSessionOrANewSourceRecoversAStoppedStream() {
       capture.captureEnabled = true
       capture.stream.stopped()
       compare(capture.failed, true); compare(scene.created, 1)
       capture.captureEnabled = false
-      compare(capture.failed, false)
       capture.captureEnabled = true
-      compare(scene.created, 2); compare(capture.failed, false); verify(capture.hasContent)
-      compare(capture.stream.captureSource, first)
-      // A second stop in the new session is again final until the session after it.
+      compare(scene.created, 1); compare(capture.failed, true); verify(!capture.hasContent)
+      capture.captureSource = second
+      compare(capture.failed, false); compare(scene.created, 2)
+      compare(capture.stream.captureSource, second); verify(capture.hasContent)
       capture.stream.stopped()
       wait(0); wait(0)
       compare(scene.created, 2); compare(capture.failed, true)
-      capture.captureSource = second
-      compare(capture.failed, false); compare(scene.created, 3)
-      compare(capture.stream.captureSource, second); verify(capture.hasContent)
     }
     function test_aStoppedStreamsCardSaysWhatActuallyWorks() {
       // shell.qml binds WindowPreview.unavailableText to Logic.previewReason(), so
@@ -219,10 +212,10 @@ Item {
       compare(card.unavailableText, "Live preview stopped · reopen Overview to retry")
       compare(text.text, "Live preview stopped · reopen Overview to retry")
       verify(text.visible); verify(!text.truncated); verify(text.contentWidth <= text.width)
-      // Reopening is a real cure, so the sentence is not a dead end.
       capture.captureEnabled = false; capture.captureEnabled = true
-      tryCompare(card, "hasThumbnail", true)
-      compare(card.unavailableText, "Loading window preview…")
+      wait(50)
+      compare(card.hasThumbnail, false)
+      compare(card.unavailableText, "Live preview stopped · reopen Overview to retry")
       card.unavailableText = original
     }
     function test_aHeldPlanKeepsTheImageThroughTheCloseAnimation() {

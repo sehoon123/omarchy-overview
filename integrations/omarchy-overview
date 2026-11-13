@@ -18,14 +18,17 @@ time_left() {
 # on other displays match:` when one runs elsewhere. Under a non-UTF-8 locale Qt
 # prints a warning on stdout before everything else, so the client runs under
 # C.UTF-8 and the reply is the last line. A live instance that is busy or frozen
-# never answers, and it still runs the request once it can.
-outcome=''
+# never answers, and it still runs the request once it can, so a call that timed
+# out after an answer may still take effect. After an IPC error the instance was
+# out of reach, so the timeout is the deadline cutting the next call short and
+# the error stays the outcome.
+outcome='' answer=''
 ipc() {
   local out status=0
   out="$(NO_COLOR=1 LC_ALL=C.UTF-8 timeout "$left" quickshell ipc -p "$config" call overview "$@" 2>/dev/null)" || status=$?
-  ((status == 124)) && [[ $outcome == answered || $outcome == ipc-error ]] && return
+  ((status == 124)) && [[ $outcome == ipc-error ]] && return
   reply=${out##*$'\n'}
-  if ((status == 0)); then outcome=answered
+  if ((status == 0)); then outcome=answered answer=$reply
   elif ((status == 124)); then outcome=no-answer
   elif [[ $'\n'$out == *$'\n''No running instances for '* && $out != *'Some instances on other displays match:'* ]]; then
     outcome=not-running
@@ -37,7 +40,7 @@ why() {
   local detail
   read -r detail <<<"$reply" || true
   case $outcome in
-    no-answer) echo "Overview did not answer within $limit seconds" ;;
+    no-answer) echo "Overview did not answer within $limit seconds${answer:+ (last answer: $answer)}" ;;
     not-running) echo "Overview did not start within $limit seconds" ;;
     answered) echo "Overview did not accept the request: $detail" ;;
     ipc-error) echo "Overview could not be reached: $detail" ;;

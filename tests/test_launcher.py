@@ -359,7 +359,6 @@ class StepPathTests(LauncherTestCase):
             'unavailable': (dict(replies={'navigateDesktop': ['unavailable']}), 1),
             'unavailable, under a C locale': (dict(lang='C', replies={'navigateDesktop': ['unavailable']}), 1),
             'ok': (dict(replies={'navigateDesktop': ['ok']}), 0),
-            'opening': (dict(replies={'navigateDesktop': ['opening']}), 0),
         }
         for name, (world, switches) in cases.items():
             with self.subTest(name):
@@ -367,6 +366,25 @@ class StepPathTests(LauncherTestCase):
                 press = box.press('--next')
                 self.assertQuietSuccess(box, press)
                 self.assertEqual(switches, len(box.controller('fired')))
+
+    def test_a_step_ends_quietly_only_on_ok_and_any_other_answer_is_asked_again(self):
+        # Logic.ipcGuard() answers navigateDesktop `ok` exactly when the step took
+        # effect, and its refusals have no side effect. quickshell prints its own
+        # exit-0 messages when no handler ran at all.
+        transient = ['closing', 'opening', 'activating', 'busy', 'Not ready to accept queries yet.']
+        persistent = ['shutdown', 'settings', 'Target not found.',
+                      ' ERROR quickshell.ipc: Error occurred while waiting for response.', '']
+        cases = [(reply, Box(self, replies={'navigateDesktop': [reply, 'ok']}), True) for reply in transient]
+        cases += [(reply, Box(self, replies={'navigateDesktop': [reply]}), False) for reply in persistent]
+        presses = wait_all([box.start('--next') for _, box, _ in cases])
+        for (reply, box, took), press in zip(cases, presses):
+            with self.subTest(reply=reply):
+                self.assertEqual([], box.lines('controller.log'), 'a live Overview gets no switch behind it')
+                if took:
+                    self.assertQuietSuccess(box, press)
+                    self.assertEqual(1, box.count('applied.log', 'navigateDesktop'), 'asked again until it took')
+                else:
+                    self.assertVisibleFailure(box, press)
 
     def test_a_slow_or_silent_overview_never_gets_a_desktop_switched_behind_it(self):
         slow = Box(self, replies={'navigateDesktop': [{'after': 1.5}]})

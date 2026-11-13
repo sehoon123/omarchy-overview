@@ -65,10 +65,11 @@ start_overview() {
 }
 
 # The unit runs `--shutdown ${MAINPID}`, and systemd leaves $MAINPID unset once it
-# saw the main process exit.
+# saw the main process exit. An instance that answers after that is another one.
 main_gone() { (($#)) && { [[ -z $1 ]] || ! kill -0 "$1" 2>/dev/null; }; }
 
 if [[ "${1:-}" == --shutdown ]]; then
+  main_gone "${@:2}" && exit 0
   deadline 7
   call=shutdown
   ipc shutdown

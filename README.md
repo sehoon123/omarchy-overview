@@ -111,7 +111,9 @@ open once Overview has loaded. A press that arrives while another one is in
 flight is dropped, and a held `--next` or `--previous` key runs one step at a
 time. `--shutdown ${MAINPID}` is the service's `ExecStop`. It exits 0 only once
 the main process that systemd passed is gone or `quickshell ipc` reports that no
-instance runs on any display, and otherwise exits 1 after 7 seconds.
+instance runs on any display, and otherwise exits 1 after 7 seconds. When that
+main process is already gone, it sends nothing, so an instance that runs outside
+the service is left alone.
 
 Open settings with the **Settings** button at the bottom right of the window grid.
 Preferences are in `~/.config/omarchy/overview/settings.json`. Public theme tokens are read from

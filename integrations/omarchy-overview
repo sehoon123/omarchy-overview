@@ -3,61 +3,101 @@
 # keeps no frame cache; window images live in the running process and nowhere else.
 set -euo pipefail
 config="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/overview"
-ipc() { timeout 1 quickshell ipc -p "$config" call overview "$@"; }
 
-# The service's graceful stop waits for Overview's own shutdown handshake: the
-# shell latches the request, closes, and arms a 3 s watchdog that forces the quit
-# even if an action, an open or a settings write is still in flight. Six seconds
-# is that watchdog plus room for the close and the final write; `ipc status` is
-# the liveness probe, so the loop ends as soon as the process is gone.
-if [[ "${1:-}" == --shutdown ]]; then
-  ipc shutdown >/dev/null 2>&1 || exit 0
-  deadline=$((SECONDS + 6))
-  while ((SECONDS < deadline)); do
-    ipc status >/dev/null 2>&1 || exit 0
-    sleep .03
-  done
-  echo 'Overview did not stop within six seconds' >&2
+# Every child gets the whole time left, so a call that timed out has used up the
+# deadline and nothing can retry it. time_left fails once nothing is left,
+# because `timeout 0` would never expire.
+deadline() { limit=$1 left=$1 ends=$((${EPOCHREALTIME//[!0-9]/} + $1 * 1000000)); }
+time_left() {
+  local us=$((ends - ${EPOCHREALTIME//[!0-9]/}))
+  ((us > 0)) && printf -v left '%d.%06d' $((us / 1000000)) $((us % 1000000))
+}
+
+# `quickshell ipc call` (0.3.2) exits 255 with a line `No running instances for`
+# when no instance of this config runs on this display, and adds `Some instances
+# on other displays match:` when one runs elsewhere. Under a non-UTF-8 locale a Qt
+# warning comes first, so the reply is the last line. A live instance that is
+# busy or frozen never answers, and it still runs the request once it can.
+ipc() {
+  local out status=0
+  out="$(NO_COLOR=1 timeout "$left" quickshell ipc -p "$config" call overview "$@" 2>/dev/null)" || status=$?
+  reply=${out##*$'\n'}
+  if ((status == 0)); then outcome=answered
+  elif ((status == 124)); then outcome=no-answer
+  elif [[ $'\n'$out == *$'\n''No running instances for '* && $out != *'Some instances on other displays match:'* ]]; then
+    outcome=not-running
+  else outcome=ipc-error reply=${out:-"quickshell ipc exited $status"}
+  fi
+}
+
+why() {
+  local detail
+  read -r detail <<<"$reply" || true
+  case $outcome in
+    no-answer) echo "Overview did not answer within $limit seconds" ;;
+    not-running) echo "Overview did not start within $limit seconds" ;;
+    answered) echo "Overview did not accept the request: $detail" ;;
+    ipc-error) echo "Overview could not be reached: $detail" ;;
+  esac
+}
+
+# A keybinding discards stderr, so a failed press also shows one notification.
+fail_press() {
+  echo "omarchy-overview: $1" >&2
+  timeout 1 notify-send -a Overview -u normal -- "$1" 2>/dev/null || true
   exit 1
+}
+
+start_overview() {
+  time_left || return 0
+  timeout "$left" systemctl --user start sehun-overview.service && return 0
+  time_left || return 0
+  timeout "$left" env OVERVIEW_START_HIDDEN=1 quickshell -p "$config" --no-duplicate --daemonize 9>&- || true
+}
+
+if [[ "${1:-}" == --shutdown ]]; then
+  deadline 7
+  ipc shutdown
+  until [[ $outcome == not-running ]]; do
+    sleep .03
+    if ! time_left; then echo "omarchy-overview: Overview did not stop within $limit seconds" >&2; exit 1; fi
+    ipc status
+  done
+  exit 0
 fi
 
-# Never summon previews into a locked session.
-omarchy-hyprland-session-locked && exit 0
-mode=""
+mode='' direction=''
 case "${1:-}" in
-  --next|--previous)
-    direction="${1#--}"
-    # Overview answers `ok` when it moved, or a named refusal when it is running
-    # and deliberately did nothing - never switch a desktop behind a visible or
-    # an opening session. Only a call it never answered (it is not running;
-    # `quickshell ipc` then exits non-zero and reports that on stdout) or the
-    # explicit `unavailable` (hidden, and its worker could not take the step)
-    # reaches the fallback, which dispatches a real workspace switch.
-    if reply="$(ipc navigateDesktop "$direction" 2>/dev/null)"; then
-      [[ "$reply" == unavailable ]] || exit 0
-    fi
-    # Bounded: the controller already refuses a contended action lock within
-    # 1.5 s, and this ceiling keeps a held keybinding from stacking processes.
-    exec timeout 3 /usr/bin/python3 "$config/controller.py" step "$direction" ;;
-  --app) mode=app ;;
-  "") ;;
+  --next|--previous) direction="${1#--}" lock=sehun-overview-step ;;
+  --app) mode=app lock=sehun-overview ;;
+  "") lock=sehun-overview ;;
   *) echo 'Usage: omarchy-overview [--app|--next|--previous|--shutdown]' >&2; exit 2 ;;
 esac
-
-exec 9>"${XDG_RUNTIME_DIR:?}/sehun-overview.lock"
+exec 9>"${XDG_RUNTIME_DIR:?}/$lock.lock"
 flock -n 9 || exit 0
-# Warm path: one IPC request, no process restart or hyprctl/jq context probes.
-# `ok` is the only reply that means the request was accepted; a refusal (a close
-# animation, a shutdown in flight) is not success, so it falls through to the
-# retry loop below instead of reporting a silent no-op as a completed toggle.
-if [[ "$(ipc toggle "$mode" 2>/dev/null || true)" == ok ]]; then exit 0; fi
+deadline 2
+# Never summon previews into a locked session.
+timeout "$left" omarchy-hyprland-session-locked && exit 0
+time_left || fail_press "The session lock check did not finish within $limit seconds"
 
-if ! systemctl --user start sehun-overview.service; then
-  env OVERVIEW_START_HIDDEN=1 quickshell -p "$config" --no-duplicate --daemonize 9>&-
+if [[ -n $direction ]]; then
+  ipc navigateDesktop "$direction"
+  case $outcome in
+    answered) [[ $reply == unavailable ]] || exit 0 ;;
+    no-answer|ipc-error) fail_press "$(why)" ;;
+  esac
+  time_left || fail_press "Overview did not switch desktops within $limit seconds"
+  exec timeout "$left" /usr/bin/python3 "$config/controller.py" step "$direction"
 fi
-for ((i = 0; i < 60; i++)); do
-  if [[ "$(ipc toggle "$mode" 2>/dev/null || true)" == ok ]]; then exit 0; fi
+
+# Warm path: one IPC request, no process restart or hyprctl/jq context probes.
+# While its config loads, quickshell answers `Not ready to accept queries yet.`
+# without calling the handler.
+started=''
+ipc toggle "$mode"
+until [[ $outcome == answered && $reply == ok ]]; do
+  if [[ $outcome == not-running && -z $started ]]; then started=1; start_overview; fi
   sleep .025
+  time_left || fail_press "$(why)"
+  ipc toggle "$mode"
 done
-echo 'Unable to open Overview' >&2
-exit 1

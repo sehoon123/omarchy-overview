@@ -352,7 +352,7 @@ ShellRoot {
     closeWhenDone = !!exitAfter
     actionTicket = bridge.request(args, {}, shown ? displayName : "")
     busy = actionTicket !== 0
-    if (!busy) { closeWhenDone = false; flash(Logic.backendRefusal({ ready: bridge.ready, gaveUp: bridge.gaveUp })) }
+    if (!busy) { closeWhenDone = false; flash(Logic.backendRefusal({ refreshing: refreshTicket !== 0, gaveUp: bridge.gaveUp })) }
   }
   function actionFinished(result) {
     actionTicket = 0; busy = false
@@ -523,7 +523,7 @@ ShellRoot {
     id: stateRefresh
     interval: 80
     onTriggered: {
-      const action = Logic.refreshAction({ ready: bridge.ready, busy: bridge.outstanding, preparing: root.preparing })
+      const action = Logic.refreshAction({ ready: bridge.ready, outstanding: bridge.outstanding, preparing: root.preparing })
       if (action === "defer") { restart(); return }
       if (action === "run") root.refreshDesktops()
     }
@@ -786,7 +786,7 @@ ShellRoot {
         previewError: root.previewError,
         accent: String(root.accent), composing: search.input.inputMethodComposing, searchFocused: search.input.activeFocus,
         preparing: root.preparing, openCount: root.openCount,
-        firstFrameMs: root.firstFrameMs, workerPid: bridge.processId, workerRestarts: bridge.restarts,
+        firstFrameMs: root.firstFrameMs, workerPid: bridge.processId, workerRestarts: bridge.losses,
         completedRequests: bridge.completedCount, lastActionMs: bridge.lastElapsedMs,
         layout: { x: stage.x, y: stage.y, width: stage.width, height: stage.height, rects: root.placements },
         zones: root.zones() }, cards))

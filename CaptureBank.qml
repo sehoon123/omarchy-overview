@@ -42,7 +42,8 @@ Item {
       const old = entries[window.address]
       // Address reuse is not identity continuity. Never inherit another source.
       const keep = !!old && old.modelData === window
-      if (!addresses.includes(window.address) && !(keep && (!allowNew || old.failed))) continue
+      const irreplaceable = keep && (!allowNew || old.failed)
+      if (!addresses.includes(window.address) && !irreplaceable) continue
       const entry = keep ? old : allowNew
         ? factory.createObject(bank, { modelData: window, serial: ++nextSerial }) : null
       if (entry) next[window.address] = entry

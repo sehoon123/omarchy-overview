@@ -148,6 +148,7 @@ test('closeOverview picks one of four modes', () => {
   assert.equal(L.closeMode({ ...state, shutdownRequested: true, busy: true, closing: true }), 'immediate');
   // PINS F-08 - corrected by F-08 fix: a wedged action defers the close instead of performing it.
   assert.equal(L.closeMode({ ...state, busy: true, closing: true }), 'deferToBusy');
+  assert.equal(L.closeMode({ ...state, busy: true }), 'deferToBusy');
   // F-07 residual fixed: a close arriving during a close is still ignored, which
   // is correct, but `closing` is no longer unbounded - the close watchdog below
   // finishes the session even when the exit motion never completes, so `closing`
@@ -891,24 +892,20 @@ test('a close motion or its watchdog only finishes the session it was started fo
   assert.equal(L.closeVerdict(closing).reason, '');
   assert.equal(L.closeVerdict({ ...closing, source: 'unknown' }).action, 'finish');
 });
-test('a desktop-state refresh never clobbers a queued close or undo (F-08, refuted)', () => {
-  assert.equal(L.refreshAction({ ready: true, busy: false, preparing: false }), 'run');
-  assert.equal(L.refreshAction({ ready: true, busy: true, preparing: false }), 'defer');
-  assert.equal(L.refreshAction({ ready: true, busy: false, preparing: true }), 'defer');
-  assert.equal(L.refreshAction({ ready: true, busy: true, preparing: true }), 'defer');
+test('the desktop refresh waits for an outstanding request or open (F-08, refuted)', () => {
+  assert.equal(L.refreshAction({ ready: true, outstanding: false, preparing: false }), 'run');
+  assert.equal(L.refreshAction({ ready: true, outstanding: true, preparing: false }), 'defer');
+  assert.equal(L.refreshAction({ ready: true, outstanding: false, preparing: true }), 'defer');
+  assert.equal(L.refreshAction({ ready: true, outstanding: true, preparing: true }), 'defer');
   // A worker that is not ready yet is announced by onReadyChanged, not polled.
-  assert.equal(L.refreshAction({ ready: false, busy: false, preparing: false }), 'skip');
-  assert.equal(L.refreshAction({ ready: false, busy: true, preparing: true }), 'skip');
+  assert.equal(L.refreshAction({ ready: false, outstanding: false, preparing: false }), 'skip');
+  assert.equal(L.refreshAction({ ready: false, outstanding: true, preparing: true }), 'skip');
   assert.equal(L.refreshAction({}), 'skip');
-  const busyClose = { opening: false, shutdownRequested: false, busy: true, closing: false, shown: true, motion: true };
-  assert.equal(L.closeMode(busyClose), 'deferToBusy');
-  assert.equal(L.refreshAction({ ready: true, busy: true, preparing: false }), 'defer');
 });
 test('a desktop action the worker cannot take now says why, truthfully', () => {
-  assert.equal(L.backendRefusal({ ready: true }), 'Overview is refreshing the desktop list; please try again');
-  assert.equal(L.backendRefusal({ ready: false }), 'Overview backend is restarting; please try again');
-  assert.equal(L.backendRefusal({ ready: false, gaveUp: true }),
-    'Overview backend stopped after repeated failures; restart Overview');
+  assert.equal(L.backendRefusal({ refreshing: true }), 'Overview is refreshing the desktop list; please try again');
+  assert.equal(L.backendRefusal({}), 'Overview backend is restarting; please try again');
+  assert.equal(L.backendRefusal({ gaveUp: true }), 'Overview backend stopped after repeated failures; restart Overview');
 });
 test('the close walkthrough: choose, churn, activate once, then a bounded shutdown', () => {
   // choose() stores the window and starts the animated close of session 7.

@@ -293,10 +293,10 @@ function closeVerdict(state) {
 }
 function refreshAction(state) {
   if (!state.ready) return 'skip';
-  return state.busy || state.preparing ? 'defer' : 'run';
+  return state.outstanding || state.preparing ? 'defer' : 'run';
 }
 function backendRefusal(state) {
-  if (state.ready) return 'Overview is refreshing the desktop list; please try again';
+  if (state.refreshing) return 'Overview is refreshing the desktop list; please try again';
   return state.gaveUp ? 'Overview backend stopped after repeated failures; restart Overview'
     : 'Overview backend is restarting; please try again';
 }

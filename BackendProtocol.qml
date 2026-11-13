@@ -43,7 +43,7 @@ Item {
   property bool ready: false
   property int sequence: 0
   property var pending: ({})
-  property int restarts: 0
+  property int losses: 0
   property int unansweredLosses: 0
   readonly property int maxRestarts: 5
   readonly property bool gaveUp: unansweredLosses > maxRestarts
@@ -89,7 +89,7 @@ Item {
   function processExited() {
     ready = false
     failPending("Overview worker stopped; action was not replayed")
-    restarts++
+    losses++
     unansweredLosses++
     if (gaveUp) restartTimer.stop()
     else restartTimer.restart()

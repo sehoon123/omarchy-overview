@@ -36,22 +36,25 @@ ipc() {
   fi
 }
 
-why() {
+# A keybinding discards stderr, so a failed press also shows one notification.
+# A notification stays in the notification history, so it shows the sentence $1
+# alone. The detail $2 is text another program printed, which can name a
+# workspace or a path, and it goes to stderr only.
+fail_press() {
+  echo "omarchy-overview: $1${2:+: $2}" >&2
+  timeout 1 notify-send -a Overview -u normal -- "$1" 2>/dev/null || true
+  exit 1
+}
+
+fail_ipc() {
   local detail
   read -r detail <<<"$reply" || true
   case $outcome in
-    no-answer) echo "Overview did not answer within $limit seconds${answer:+ (last answer: $answer)}" ;;
-    not-running) echo "Overview did not start within $limit seconds" ;;
-    answered) echo "Overview did not accept the request: $detail" ;;
-    ipc-error) echo "Overview could not be reached: $detail" ;;
+    no-answer) fail_press "Overview did not answer within $limit seconds${answer:+ (last answer: $answer)}" ;;
+    not-running) fail_press "Overview did not start within $limit seconds" ;;
+    answered) fail_press "Overview did not accept the request: $detail" ;;
+    ipc-error) fail_press "Overview could not be reached" "$detail" ;;
   esac
-}
-
-# A keybinding discards stderr, so a failed press also shows one notification.
-fail_press() {
-  echo "omarchy-overview: $1" >&2
-  timeout 1 notify-send -a Overview -u normal -- "$1" 2>/dev/null || true
-  exit 1
 }
 
 start_overview() {
@@ -98,18 +101,17 @@ if [[ -n $direction ]]; then
   ipc navigateDesktop "$direction"
   while [[ $outcome == answered && $reply != ok && $reply != unavailable ]]; do
     sleep .025
-    time_left || fail_press "$(why)"
+    time_left || fail_ipc
     ipc navigateDesktop "$direction"
   done
   case $outcome in
     answered) [[ $reply == unavailable ]] || exit 0 ;;
-    no-answer|ipc-error) fail_press "$(why)" ;;
+    no-answer|ipc-error) fail_ipc ;;
   esac
   time_left || fail_press "Overview did not switch desktops within $limit seconds"
   out=$(timeout "$left" /usr/bin/python3 "$config/controller.py" step "$direction") && exit 0 || status=$?
   ((status == 124)) && fail_press "The desktop switch did not finish within $limit seconds"
-  [[ $out =~ \"error\":\ \"([^\"\\]*) ]] && fail_press "The desktop switch failed: ${BASH_REMATCH[1]}"
-  fail_press "The desktop switch failed: controller.py exited $status"
+  fail_press "The desktop switch failed" "${out:-controller.py exited $status}"
 fi
 
 # Warm path: one IPC request, no process restart or hyprctl/jq context probes.
@@ -120,6 +122,6 @@ ipc toggle "$mode"
 until [[ $outcome == answered && $reply == ok ]]; do
   if [[ $outcome == not-running && -z $started ]]; then started=1; start_overview; fi
   sleep .025
-  time_left || fail_press "$(why)"
+  time_left || fail_ipc
   ipc toggle "$mode"
 done

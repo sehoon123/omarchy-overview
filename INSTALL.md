@@ -77,7 +77,9 @@ field that changed shape.
 
 If the launcher itself cannot finish a press within 2 seconds, it shows one
 notification, such as **Overview did not answer within 2 seconds**, and writes
-the same line to stderr. A busy or frozen Overview can still act on that press
+the same line to stderr. Text that another program printed, such as
+quickshell's IPC error or controller.py's reply, goes to stderr only, because
+it can name a workspace or a path. A busy or frozen Overview can still act on that press
 later, so the launcher does not retry it. A press during a cold service start
 can do this too: it reports that Overview did not answer and then opens once
 Overview has loaded. If Overview keeps not answering, restart it with

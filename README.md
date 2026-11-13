@@ -139,7 +139,10 @@ to neither Hyprland nor Quickshell. It currently covers:
 - the Python guard paths — malformed or missing compositor fields, transport
   failures, corrupt saved desktop order, and bounded error text;
 - layout geometry at degenerate and extreme sizes and aspect ratios, plus the
-  card, desktop-strip and input components.
+  card, desktop-strip and input components;
+- `shell.qml` itself, loaded against stand-in Quickshell modules
+  (`tests/shell-harness/`), with the test playing the worker, the opening
+  helper, the IPC caller and the capture streams.
 
 It never removes a real output and never tries to reproduce a compositor crash.
 

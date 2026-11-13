@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Copies the shell into ./app for harness.qml. shell.qml loses only the panel's
+# compositor attributes: pure-QML stubs cannot provide the WlrLayershell and
+# HyprlandWindow attached properties, nor layer-shell anchors on an Item.
+set -euo pipefail
+cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
+compositor='^ *(anchors \{ top: true; bottom: true; left: true; right: true \}|exclusionMode: ExclusionMode\.Ignore|WlrLayershell\.[a-zA-Z]+: .*|HyprlandWindow\.opacity: .*)$'
+found=$(grep -cE "$compositor" ../../shell.qml || true)
+if [ "$found" -ne 6 ]; then
+  echo "shell-harness: expected 6 compositor-only lines in shell.qml, found $found; update tests/shell-harness/build" >&2
+  exit 1
+fi
+rm -rf app; mkdir app
+cp ../../*.qml ../../Layout.js ../../OverviewLogic.js app/
+grep -vE "$compositor" ../../shell.qml > app/shell.qml
+# A synthetic 1x1 wallpaper, so the panel and desktop thumbnails load an image.
+mkdir -p app/state/omarchy/current
+base64 -d > app/state/omarchy/current/background <<< 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='

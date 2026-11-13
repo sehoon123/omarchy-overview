@@ -2,6 +2,7 @@
 /settings.json
 /settings.test-tmp
 /test-state/
+/tests/shell-harness/app/
 /.overview-smoke-*/
 /.deployment-backup-*/
 /.env

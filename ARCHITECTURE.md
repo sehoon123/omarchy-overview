@@ -253,9 +253,14 @@ corrects the display; nothing is replayed.
 `./validate` is offline in the strict sense: it parses every QML file, runs two
 Node suites and the Python unit tests, and runs the Qt test cases under the
 offscreen platform with the software backend. It opens no window, spawns neither
-`worker.py` nor `capture_context.py`, and makes no Hyprland or Quickshell call —
-nothing under `tests/` instantiates a component that roots a `Process`. The QML
-capture tests drive synthetic stream objects instead.
+`worker.py` nor `capture_context.py`, and makes no Hyprland or Quickshell call.
+Outside `tests/shell-harness/`, nothing under `tests/` instantiates a component
+that roots a `Process`, and the QML capture tests drive synthetic stream objects.
+The shell harness loads a copy of `shell.qml`, minus the panel's six
+compositor-only lines, against pure-QML stand-ins for Quickshell's modules
+(`tests/shell-harness/stubs`). Their `Process` records what it is asked and
+cannot start anything, so the test plays the worker, the capture-context helper,
+the IPC caller and the compositor's capture streams.
 
 What it covers today: lifecycle guard predicates (open, present, settle, close,
 shutdown, activation handoff, recheck) and the full IPC guard-return matrix; the
@@ -271,8 +276,9 @@ unreadable and newer documents, a read-only file, preserved unknown keys); the
 Python guard paths (transport failures and bounded error text, malformed monitor,
 workspace, client and layer fields, corrupt saved desktop order, undo-record
 validation, worker protocol errors); `Layout.js` at degenerate and extreme sizes
-and ratios; and the card, desktop-strip, search and drag components, including
-that the preview components take no pointer grab and load no file.
+and ratios; the card, desktop-strip, search and drag components, including
+that the preview components take no pointer grab and load no file; and
+`shell.qml` end to end through IPC, keyboard and pointer input.
 
 `tests/verify_native_previews.py`, `tests/verify_ui.py` and `tests/verify_live.py`
 are **opt-in and not part of `./validate`**. `verify_native_previews.py --run`

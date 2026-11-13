@@ -151,6 +151,17 @@ Item {
       wait(100)
       compare(scene.activated, [row.chosen])
     }
+    function notices() {
+      return Quickshell.executed.map(args => args[0] + ": " + args[args.length - 1])
+    }
+    function test_aHiddenStepTheWorkerFailedIsReported() {
+      startWorker()
+      compare(ipc().navigateDesktop("next"), "ok")
+      const step = requests().pop()
+      compare(step.args, ["step", "next"])
+      workerSays({ id: step.id, ok: false, error: "No desktops on this monitor" })
+      compare(notices(), ["notify-send: No desktops on this monitor"])
+    }
     function test_aLostRefreshIsJournaledNotReportedAsAFailedAction() {
       startWorker()
       open()

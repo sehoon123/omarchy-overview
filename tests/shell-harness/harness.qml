@@ -194,6 +194,39 @@ Item {
       compare(scene.shell.shown, false)
       compare(notices(), [])
     }
+    function test_escapeClosesWhenTheSearchFieldCannotTakeTheKeyboard_data() {
+      return [{ tag: "reopened while an action is unanswered" }, { tag: "query cleared while an action is unanswered" },
+        { tag: "Ctrl+F in Quick Look" }]
+    }
+    function test_escapeClosesWhenTheSearchFieldCannotTakeTheKeyboard(row) {
+      startWorker()
+      open()
+      answer(openRefresh())
+      tryCompare(scene.shell, "motionProgress", 1, 1000)
+      tryVerify(() => status().searchFocused, 1000)
+      if (row.tag === "Ctrl+F in Quick Look") {
+        keyClick(Qt.Key_Space)
+        compare(status().previewAddress, "a1")
+        keyClick(Qt.Key_F, Qt.ControlModifier)
+        keyClick(Qt.Key_Escape)
+        compare(status().previewAddress, "", "the first Escape leaves Quick Look")
+      } else if (row.tag === "query cleared while an action is unanswered") {
+        keyClick("W")
+        click("add", {})
+        compare(scene.shell.busy, true)
+        keyClick(Qt.Key_Escape)
+        compare(status().query, "", "the first Escape clears the query")
+      } else {
+        click("add", {})
+        keyClick(Qt.Key_Escape)
+        tryCompare(scene.shell, "shown", false, 400)
+        open()
+        compare(scene.shell.busy, true)
+        tryCompare(scene.shell, "motionProgress", 1, 1000)
+      }
+      keyClick(Qt.Key_Escape)
+      tryCompare(scene.shell, "shown", false, 400)
+    }
     function test_aLateFailureAfterTheCloseIsNotifiedOnce() {
       const create = openWithAnUnansweredAction("add", {})
       keyClick(Qt.Key_Escape)

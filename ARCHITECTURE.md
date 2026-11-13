@@ -266,7 +266,7 @@ offscreen platform with the software backend. It opens no window, spawns neither
 `worker.py` nor `capture_context.py`, and makes no Hyprland or Quickshell call.
 Outside `tests/shell-harness/`, nothing under `tests/` instantiates a component
 that roots a `Process`, and the QML capture tests drive synthetic stream objects.
-The shell harness loads a copy of `shell.qml`, minus the panel's six
+The shell harness loads a copy of `shell.qml`, minus the panel's five
 compositor-only lines, against pure-QML stand-ins for Quickshell's modules
 (`tests/shell-harness/stubs`). Their `Process` records what it is asked and
 cannot start anything, so the test plays the worker, the capture-context helper,

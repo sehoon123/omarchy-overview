@@ -4,10 +4,10 @@
 # layer-shell anchors on an Item.
 set -euo pipefail
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
-compositor='^ *(anchors \{ top: true; bottom: true; left: true; right: true \}|exclusionMode: ExclusionMode\.Ignore|WlrLayershell\.[a-zA-Z]+: .*|HyprlandWindow\.opacity: .*)$'
+compositor='^ *(anchors \{ top: true; bottom: true; left: true; right: true \}|WlrLayershell\.[a-zA-Z]+: .*|HyprlandWindow\.opacity: .*)$'
 found=$(grep -cE "$compositor" ../../shell.qml || true)
-if [ "$found" -ne 6 ]; then
-  echo "shell-harness: expected 6 compositor-only lines in shell.qml, found $found; update tests/shell-harness/build" >&2
+if [ "$found" -ne 5 ]; then
+  echo "shell-harness: expected 5 compositor-only lines in shell.qml, found $found; update tests/shell-harness/build" >&2
   exit 1
 fi
 rm -rf app; mkdir app

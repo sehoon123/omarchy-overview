@@ -61,11 +61,15 @@ start_overview() {
 
 if [[ "${1:-}" == --shutdown ]]; then
   deadline 7
+  # Each accepted shutdown restarts the shell's 3 s watchdog, so it is asked only
+  # until one is answered `ok`; after that only `status` is polled.
+  call=shutdown
   ipc shutdown
   until [[ $outcome == not-running ]]; do
+    [[ $outcome == answered && $reply == ok ]] && call=status
     sleep .03
     if ! time_left; then echo "omarchy-overview: Overview did not stop within $limit seconds" >&2; exit 1; fi
-    ipc status
+    ipc "$call"
   done
   exit 0
 fi

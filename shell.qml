@@ -472,6 +472,8 @@ ShellRoot {
       previewAddress: previewAddress, hasSelection: !!windows[selected] }
   }
   function clicked(z) {
+    // A close never waits for an unanswered action.
+    if (z.kind === "exit" || (z.kind === "background" && !filterWorkspace)) { closeOverview(); return }
     if (busy) return
     if (z.kind === "window") choose(z.index)
     else if (z.kind === "desktop") switchDesktop(z.id)
@@ -479,11 +481,7 @@ ShellRoot {
     else if (z.kind === "add") runAction(["create"])
     else if (z.kind === "remove") runAction(["remove", String(z.id)])
     else if (z.kind === "undo") undo()
-    else if (z.kind === "exit") closeOverview()
-    else if (z.kind === "background") {
-      if (filterWorkspace) switchDesktop(filterWorkspace)
-      else closeOverview()
-    }
+    else if (z.kind === "background") switchDesktop(filterWorkspace)
   }
 
   Preferences {

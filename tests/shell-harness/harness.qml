@@ -154,13 +154,17 @@ Item {
     function notices() {
       return Quickshell.executed.map(args => args[0] + ": " + args[args.length - 1])
     }
-    function test_aHiddenStepTheWorkerFailedIsReported() {
+    // The worker's error can quote Hyprland, a workspace name included, and a
+    // notification outlives the panel in the notification history.
+    function test_aHiddenStepTheWorkerFailedIsReportedInAFixedSentence() {
       startWorker()
       compare(ipc().navigateDesktop("next"), "ok")
       const step = requests().pop()
       compare(step.args, ["step", "next"])
-      workerSays({ id: step.id, ok: false, error: "No desktops on this monitor" })
-      compare(notices(), ["notify-send: No desktops on this monitor"])
+      ignoreWarning(/action step failed: Hyprland: invalid workspace "name:Payroll"/)
+      workerSays({ id: step.id, ok: false, error: 'Hyprland: invalid workspace "name:Payroll"' })
+      compare(notices(), ["notify-send: The action did not complete"])
+      verify(!JSON.stringify(Quickshell.executed).includes("Payroll"), "the workspace name stays in the journal")
     }
     function test_aLostRefreshIsJournaledNotReportedAsAFailedAction() {
       startWorker()
@@ -258,7 +262,7 @@ Item {
       tryCompare(scene.shell, "shown", false, 400)
       ignoreWarning(/action create failed/)
       workerSays({ id: create.id, ok: false, error: "Hyprland did not confirm the change; please try again" })
-      compare(notices(), ["notify-send: Hyprland did not confirm the change; please try again"])
+      compare(notices(), ["notify-send: The action did not complete"])
     }
     function test_aLateReplyInAReopenedSessionDoesNotActOnIt_data() {
       return [{ tag: "ok" }, { tag: "failure" }]
@@ -285,7 +289,7 @@ Item {
         compare(status().desktopLabels, ["Mail", "Desktop 2"])
         compare(notices(), [])
       } else {
-        compare(notices(), ["notify-send: That desktop is no longer available"])
+        compare(notices(), ["notify-send: The action did not complete"])
       }
     }
     function shownSession() {

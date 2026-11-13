@@ -296,6 +296,15 @@ class TogglePathTests(LauncherTestCase):
         self.assertEqual(3, box.count('calls.log', 'toggle'))
         self.assertEqual(1, box.count('applied.log', 'toggle'))
 
+    def test_a_refusal_is_still_the_reason_when_the_deadline_cuts_the_next_ask_short(self):
+        slow = [{'reply': 'closing', 'after': 1.5}]
+        boxes = {'--app': Box(self, replies={'toggle': slow}), '--next': Box(self, replies={'navigateDesktop': slow})}
+        presses = wait_all([box.start(args) for args, box in boxes.items()])
+        for (args, box), press in zip(boxes.items(), presses):
+            with self.subTest(args):
+                self.assertVisibleFailure(box, press)
+                self.assertIn('closing', box.notices()[0], 'Overview answered, so its refusal is why')
+
     def test_a_stopped_overview_is_started_then_toggled_once(self):
         for systemctl in ('ok', 'fail'):
             with self.subTest(systemctl=systemctl):

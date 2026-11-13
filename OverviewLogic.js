@@ -159,7 +159,6 @@ function openBlocked(state) {
 }
 function closeMode(state) {
   if (state.opening || state.shutdownRequested) return 'immediate';
-  if (state.busy) return 'deferToBusy';
   if (state.closing) return 'ignore';
   return state.shown && state.motion ? 'animate' : 'immediate';
 }
@@ -338,8 +337,8 @@ function ipcGuard(request) {
       shown: state.shown, opening: state.opening });
     return blocked ? { action: 'refuse', reply: blocked } : { action: 'open', reply: 'ok' };
   }
-  // A toggle over a visible or opening session closes it; while `busy` the close
-  // is queued (closeWhenDone), which is an acceptance, not a refusal.
+  // A toggle over a visible or opening session closes it, at once even while a
+  // desktop action is in flight.
   if (call === 'toggle') return { action: 'close', reply: 'ok' };
   if (call === 'setQuery') {
     if (!state.shown) return { action: 'refuse', reply: 'hidden' };

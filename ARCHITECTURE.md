@@ -198,18 +198,20 @@ step, reorder, remove and undo actions use the resident Python worker and its
 serial action lock; a move carries a grouped window's members in its undo
 record, but there is no bulk "move this desktop's windows" action. Mutating
 requests are not replayed after worker loss, and a request that never answers is
-failed by the client after 20 s so the UI cannot stay busy forever. A lost
-worker is restarted after a growing delay; once it has been lost six times with
-no answer in between, the client stops restarting it, and a desktop action then
-says the backend stopped and that restarting Overview is the cure. Preview
-capture never invokes these actions and never scrolls a viewport.
+failed by the client after 20 s so the UI cannot stay busy forever. A close
+never waits for that answer, so the panel hides at once. An answer that arrives
+after its session ended updates only the desktop list, and a failure then
+becomes a notification. A lost worker is restarted after a growing delay; once
+it has been lost six times with no answer in between, the client stops
+restarting it, and a desktop action then says the backend stopped and that
+restarting Overview is the cure. Preview capture never invokes these actions and
+never scrolls a viewport.
 
 The read-only `state` refresh that follows every open, worker start and
 workspace event uses the same worker, which answers one request at a time, but
-it is not a user action: it never sets `busy`, so it cannot hold a close, drop a
-key or block choosing a window, and its failure goes to the journal. A desktop
-action clicked while it is in flight is refused with that reason instead of
-queued.
+it is not a user action: it never sets `busy`, so it cannot drop a key or block
+choosing a window, and its failure goes to the journal. A desktop action clicked
+while it is in flight is refused with that reason instead of queued.
 
 Workspace identity is a positive numeric selector or `name:<name>`, not a named
 workspace's temporary negative ID. Removal moves windows rather than closing
@@ -224,9 +226,9 @@ matrix. The matrix itself is documented in `shell.qml` immediately above
 `IpcHandler`. Five handlers return a string, two return a bool, and the contract
 is the same in all of them:
 
-- `ok` means the request was **accepted** (a close queued behind an in-flight
-  action counts as accepted). Any other reply is a refusal with **no side
-  effect**. No reply at all can only mean the process is gone.
+- `ok` means the request was **accepted**, and an accepted close happens at
+  once, even while a desktop action is in flight. Any other reply is a refusal
+  with **no side effect**. No reply at all can only mean the process is gone.
 - Precedence is always: invalid argument, then `shutdownRequested`, then
   `closing`, then the call's own state. `preparing` answers as `opening`.
 - `openOverview`, `toggle`, `close`, `showSettings` and `navigateDesktop` return

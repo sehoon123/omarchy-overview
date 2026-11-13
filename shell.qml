@@ -45,6 +45,8 @@ ShellRoot {
   property point dragPoint: Qt.point(0, 0)
   property var hoverDesktop: 0
   property int actionTicket: 0
+  // The openCount the action in flight was sent from.
+  property int actionSession: 0
   property int refreshTicket: 0
   property bool shutdownRequested: false
   // A requested shutdown always terminates: the watchdog deadline below outranks
@@ -337,10 +339,9 @@ ShellRoot {
     // animation must show the images it started with.
     closingPlan = captureAddresses
     input.cancelDrag()
-    const mode = Logic.closeMode({ opening: opening, shutdownRequested: shutdownRequested, busy: busy,
+    const mode = Logic.closeMode({ opening: opening, shutdownRequested: shutdownRequested,
       closing: closing, shown: shown, motion: preferences.values.motion })
-    if (mode === "deferToBusy") closeWhenDone = true
-    else if (mode === "animate") {
+    if (mode === "animate") {
       closing = true; closeSession = openCount
       enterMotion.stop(); openGuard.cancel(); exitMotion.restart(); closeWatchdog.restart()
     }
@@ -350,25 +351,25 @@ ShellRoot {
     if (busy) return
     actionName = args[0]
     closeWhenDone = !!exitAfter
+    actionSession = openCount
     actionTicket = bridge.request(args, {}, shown ? displayName : "")
     busy = actionTicket !== 0
     if (!busy) { closeWhenDone = false; flash(Logic.backendRefusal({ refreshing: refreshTicket !== 0, gaveUp: bridge.gaveUp })) }
   }
   function actionFinished(result) {
     actionTicket = 0; busy = false
+    // A reply acts only on the session that sent it. After a close or a reopen it
+    // brings only its desktop data, and a failure becomes a notification.
+    const live = shown && !closing && actionSession === openCount
     if (!result.ok) {
-      if (closeWhenDone) {
-        console.warn("Overview: action", actionName, "failed:", result.error || "no error reported")
-        finishClose()
-        report("Overview action failed", "The action did not complete")
-        return
-      }
-      // A hidden panel shows no toast; the launcher's step stopped at the `ok`.
-      if (!shown) { report("Overview action failed", result.error || "The action did not complete"); return }
-      flash(result.error || "Could not complete the action")
+      if (live && !closeWhenDone) { flash(result.error || "Could not complete the action"); return }
+      console.warn("Overview: action", actionName, "failed:", result.error || "no error reported")
+      if (live) finishClose()
+      report("Overview action failed", result.error || "The action did not complete")
       return
     }
     applyDesktopState(result)
+    if (!live) return
     if (result.removed && filterWorkspace === result.removed) filterWorkspace = result.target
     if (result.undo) undoRecord = result.undo
     else if (actionName !== "switch") undoRecord = null
@@ -667,25 +668,25 @@ ShellRoot {
 
   // ---- IPC guard matrix ------------
   // Logic.ipcGuard() is the single policy and OverviewLogic.test.js pins every
-  // cell. 'ok' means the request was ACCEPTED (a close queued behind a busy
-  // action is an acceptance); every other reply names a deterministic refusal
-  // that has NO side effect. A call that gets no reply in time may still be
-  // applied later, so the launcher reports it instead of retrying.
+  // cell. 'ok' means the request was ACCEPTED; every other reply names a
+  // deterministic refusal that has NO side effect. A call that gets no reply in
+  // time may still be applied later, so the launcher reports it instead of
+  // retrying.
   // `preparing` is `opening`. Precedence is always: invalid argument,
   // shutdownRequested, closing, then the call's own state. Only
   // navigateDesktop's 'unavailable' invites integrations/omarchy-overview's
   // `controller.py step` fallback.
   //
   // openOverview()     -> string  ok | shutdown | closing | activating | shown | opening
-  // toggle(mode)       -> string  ok (opens, closes, cancels an in-flight open, or queues
-  //                               the close while busy) | invalid (mode not in {"", app}) |
-  //                               shutdown | closing | activating
+  // toggle(mode)       -> string  ok (opens, closes, or cancels an in-flight open) |
+  //                               invalid (mode not in {"", app}) | shutdown | closing |
+  //                               activating
   // shutdown()         -> string  ok, always: latches the request, re-arms the 3 s watchdog
   //                               that guarantees the quit, then closes
   // captureReady(addr) -> bool    unguarded; true only while a capture object for that
   //                               address holds content, so false while hidden, while
   //                               opening, after the teardown, and for an unknown address
-  // close()            -> string  ok (also when already hidden; queued while busy) |
+  // close()            -> string  ok (also when already hidden or busy) |
   //                               shutdown | closing
   // setQuery(text)     -> bool    true | false = invalid (over 200 chars), shutdown,
   //                               closing, hidden, busy or settings. A drag does not
@@ -898,6 +899,9 @@ ShellRoot {
         width: Math.min(420, parent.width - 96); height: 34
         accent: root.accent; surfaceColor: root.surfaceColor; textColor: root.textColor
         enabled: !root.busy && !input.dragging && !root.settingsShown && !root.previewAddress
+        // Disabling the focused field moves the keyboard focus out of content, so no
+        // key, Escape included, would reach handleKey() any more.
+        onEnabledChanged: if (!enabled && root.shown) content.forceActiveFocus()
         onKeyPressed: event => root.handleKey(event, true)
         onEdited: { root.previewAddress = ""; root.keyboardSelection = true }
       }

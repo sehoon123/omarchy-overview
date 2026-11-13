@@ -609,7 +609,7 @@ ShellRoot {
   // from exitMotion.onFinished. 400 ms is far past the 130 ms motion, so this
   // only ever fires when that never happened, and never latches the UI (F-07).
   Timer { id: closeWatchdog; interval: 400; onTriggered: root.closeSettled("watchdog") }
-  // The service's graceful stop waits six seconds: a latch may delay the quit,
+  // The service's graceful stop waits seven seconds: a latch may delay the quit,
   // never cancel it.
   Timer {
     id: shutdownWatchdog

@@ -105,12 +105,13 @@ answered `unavailable`.
 The launcher gives up on a press after 2 seconds and then shows a notification
 that says why. A busy Overview still runs a request after the launcher stopped
 waiting for it, so the launcher never retries that request, never starts the
-service for it and never replaces it with a workspace switch. A press that
-arrives while another one is in flight is dropped, and a held `--next` or
-`--previous` key runs one step at a time. `--shutdown ${MAINPID}` is the
-service's `ExecStop`. It exits 0 only once the main process that systemd passed
-is gone or `quickshell ipc` reports that no instance runs on any display, and
-otherwise exits 1 after 7 seconds.
+service for it and never replaces it with a workspace switch. A press during a
+cold service start can therefore report that Overview did not answer and then
+open once Overview has loaded. A press that arrives while another one is in
+flight is dropped, and a held `--next` or `--previous` key runs one step at a
+time. `--shutdown ${MAINPID}` is the service's `ExecStop`. It exits 0 only once
+the main process that systemd passed is gone or `quickshell ipc` reports that no
+instance runs on any display, and otherwise exits 1 after 7 seconds.
 
 Open settings with the **Settings** button at the bottom right of the window grid.
 Preferences are in `~/.config/omarchy/overview/settings.json`. Public theme tokens are read from

@@ -273,11 +273,36 @@ Item {
         backoff.processExited()
         compare(backoff.restarts, loss)
         compare(backoff.restarting, loss <= backoff.maxRestarts)
+        compare(backoff.gaveUp, loss > backoff.maxRestarts)
         delays.push(backoff.restartDelayMs)
       }
       compare(JSON.stringify(delays), JSON.stringify([500, 1000, 2000, 4000, 5000, 5000, 5000]))
       verify(!backoff.restarting)
       compare(backoffStarts.count, 0)       // nothing fired inside this synchronous loop
+    }
+    // The budget counts losses since the worker last answered. One that answers
+    // between crashes has proved it runs, so crashes spread over a long session
+    // never leave the shell without a worker; `restarts` still counts them all.
+    function test_aWorkerThatAnswersBetweenLossesIsAlwaysRestarted() {
+      for (let loss = 1; loss <= fast.maxRestarts + 2; loss++) {
+        fast.receive(harness.handshake)
+        fast.receive(harness.reply(fast.request(["state"], {}, "")))
+        fast.processExited()
+        verify(fast.restarting, "loss " + loss + " schedules a restart")
+        verify(!fast.gaveUp)
+        tryCompare(fastStarts, "count", loss)
+      }
+      compare(fast.restarts, fast.maxRestarts + 2)
+    }
+    function test_anAnswerResetsTheRestartBackoff() {
+      backoff.processExited()
+      compare(backoff.restartDelayMs, 500)
+      backoff.cancelRestart()
+      backoff.receive(harness.handshake)
+      backoff.receive(harness.reply(backoff.request(["state"], {}, "")))
+      backoff.processExited()
+      compare(backoff.restartDelayMs, 500)
+      verify(backoff.restarting)
     }
     // A worker that is wedged but
     // alive reports no exit, so without a ceiling the ticket stays pending and

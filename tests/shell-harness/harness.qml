@@ -213,5 +213,19 @@ Item {
       open()
       tryVerify(() => card("a1").thumbnail, 2000)
     }
+    // A worker that keeps dying without answering is no longer restarted, and
+    // the shell must not keep promising that it is.
+    function test_aWorkerThatKeepsDyingIsReportedAsStoppedNotRestarting() {
+      startWorker()
+      worker().exited(1, 0)
+      open()
+      tryCompare(scene.shell, "motionProgress", 1, 1000)
+      click("add", {})
+      compare(status().message, "Overview backend is restarting; please try again")
+      for (let loss = 2; loss <= 6; loss++) worker().exited(1, 0)
+      click("add", {})
+      compare(status().message, "Overview backend stopped after repeated failures; restart Overview")
+      compare(status().workerRestarts, 6)
+    }
   }
 }

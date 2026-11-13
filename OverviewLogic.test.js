@@ -913,6 +913,9 @@ test('a desktop action the worker cannot take now says why, truthfully', () => {
   // Ready but refused: the one request lane is taken by the background refresh.
   assert.equal(L.backendRefusal({ ready: true }), 'Overview is refreshing the desktop list; please try again');
   assert.equal(L.backendRefusal({ ready: false }), 'Overview backend is restarting; please try again');
+  // The client stopped restarting a worker that kept dying without answering.
+  assert.equal(L.backendRefusal({ ready: false, gaveUp: true }),
+    'Overview backend stopped after repeated failures; restart Overview');
 });
 test('the close walkthrough: choose, churn, activate once, then a bounded shutdown', () => {
   // choose() stores the window and starts the animated close of session 7.

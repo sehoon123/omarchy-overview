@@ -61,7 +61,12 @@ def unusable_field(monitor):
               *((field, number(monitor.get(field, 0)) and monitor.get(field, 0) > 0)
                 for field in ('scale', 'width', 'height')),
               *((axis, number(monitor.get(axis))) for axis in ('x', 'y')))
-    return next((field for field, ok in checks if not ok), '')
+    field = next((field for field, ok in checks if not ok), '')
+    if field:
+        return field
+    # Finite, positive width, height and scale can still divide into infinity or zero.
+    sizes = (monitor['width'] / monitor['scale'], monitor['height'] / monitor['scale'])
+    return '' if all(number(size) and size > 0 for size in sizes) else 'scale'
 
 
 def blocked(monitor):

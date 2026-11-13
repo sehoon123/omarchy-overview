@@ -81,7 +81,15 @@ timeout "$left" omarchy-hyprland-session-locked && exit 0
 time_left || fail_press "The session lock check did not finish within $limit seconds"
 
 if [[ -n $direction ]]; then
+  # Logic.ipcGuard() in OverviewLogic.js answers navigateDesktop `ok` exactly when
+  # the step took effect, and none of its refusals has a side effect. A refusal,
+  # or a message quickshell printed itself, is asked again until the deadline.
   ipc navigateDesktop "$direction"
+  while [[ $outcome == answered && $reply != ok && $reply != unavailable ]]; do
+    sleep .025
+    time_left || fail_press "$(why)"
+    ipc navigateDesktop "$direction"
+  done
   case $outcome in
     answered) [[ $reply == unavailable ]] || exit 0 ;;
     no-answer|ipc-error) fail_press "$(why)" ;;

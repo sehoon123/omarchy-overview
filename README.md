@@ -98,8 +98,9 @@ quickshell ipc -p ~/.config/omarchy/overview call overview status
 Every IPC call answers: `ok` when the request was accepted, otherwise a one-word
 reason it was refused (`invalid`, `shutdown`, `closing`, `shown`, `opening`,
 `hidden`, `busy`, `dragging`, `settings`, `activating`, `empty`, `unavailable`).
-A refusal has no side effect, so the launcher only falls back to a real workspace
-switch when Overview is not running or answered `unavailable`.
+A refusal has no side effect, so the launcher asks again until its deadline. It
+falls back to a real workspace switch only when Overview is not running or
+answered `unavailable`.
 
 The launcher gives up on a press after 2 seconds and then shows a notification
 that says why. A busy Overview still runs a request after the launcher stopped

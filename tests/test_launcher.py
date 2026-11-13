@@ -564,6 +564,21 @@ class ShutdownTests(LauncherTestCase):
             self.assertLess(stop.ended - exited[0], SLACK, 'reported promptly once it was gone')
 
 
+    def test_a_stop_for_a_main_process_that_is_gone_leaves_other_instances_alone(self):
+        # Whatever answers on the config path then is not the unit's main process,
+        # for example a daemon a press started when the service would not start.
+        gone = subprocess.Popen(['/usr/bin/true'])
+        gone.wait()
+        cases = {'systemd already saw it exit': '', 'its PID is gone': str(gone.pid)}
+        boxes = {name: Box(self, stops_in=0.05) for name in cases}
+        presses = wait_all([boxes[name].start('--shutdown', pid) for name, pid in cases.items()])
+        for (name, box), press in zip(boxes.items(), presses):
+            with self.subTest(name):
+                self.assertEqual(0, press.rc, press.stderr)
+                self.assertLess(press.elapsed, 0.5)
+                self.assertEqual([], box.lines('calls.log'), 'no request reaches the instance that answers')
+
+
 class QuickshellContractTests(unittest.TestCase):
     def test_quickshell_still_reports_no_instance_the_way_the_launcher_reads_it(self):
         quickshell = shutil.which('quickshell')

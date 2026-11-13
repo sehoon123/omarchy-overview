@@ -288,6 +288,73 @@ Item {
         compare(notices(), ["notify-send: That desktop is no longer available"])
       }
     }
+    function shownSession() {
+      startWorker()
+      open()
+      answer(openRefresh())
+      tryCompare(scene.shell, "motionProgress", 1, 1000)
+    }
+    function zoneAt(kind, match) {
+      return status().zones.find(z => z.kind === kind && Object.keys(match).every(k => z[k] === match[k]))
+    }
+    function test_aSwitchThatSucceedsClosesThePanelThatSentIt() {
+      shownSession()
+      click("desktop", { id: 2 })
+      const step = requests().pop()
+      compare(step.args, ["switch", "2"])
+      answer(step, { order: [1, 2] })
+      compare(scene.shell.shown, false)
+      compare(notices(), [])
+    }
+    function test_aMoveThatSucceedsShowsItsToastAndAWorkingUndo() {
+      shownSession()
+      const from = zoneAt("window", { address: "a1" }), to = zoneAt("desktop", { id: 2 })
+      mousePress(scene, from.x + from.width / 2, from.y + from.height / 2)
+      mouseMove(scene, from.x + from.width / 2 + 40, from.y + from.height / 2)
+      mouseMove(scene, to.x + to.width / 2, to.y + to.height / 2)
+      mouseRelease(scene, to.x + to.width / 2, to.y + to.height / 2)
+      const move = requests().pop()
+      compare(move.args, ["move", "a1", "2"])
+      const record = { moves: [{ address: "0xa1", source: 1, target: 2 }], order: [1, 2] }
+      answer(move, { target: 2, message: "Moved to Desktop 2", undo: record, order: [1, 2] })
+      compare(scene.shell.shown, true)
+      compare(status().message, "Moved to Desktop 2")
+      click("undo", {})
+      compare(requests().pop().args, ["undo", JSON.stringify(record)])
+    }
+    function test_aRefusedOpenLeavesTheActionToTheSessionThatSentIt() {
+      shownSession()
+      click("add", {})
+      const create = requests().pop()
+      const session = status().openCount
+      compare(ipc().openOverview(), "shown")
+      compare(status().openCount, session)
+      answer(create, { created: 3, message: "Desktop 3 added", order: [1, 2, 3] })
+      compare(status().message, "Desktop 3 added")
+    }
+    function test_aFailureDuringTheExitMotionIsNotifiedOnce() {
+      shownSession()
+      click("add", {})
+      const create = requests().pop()
+      compare(ipc().close(), "ok")
+      compare(scene.shell.closing, true)
+      ignoreWarning(/action create failed/)
+      workerSays({ id: create.id, ok: false, error: "Hyprland did not confirm the change; please try again" })
+      compare(notices().length, 1, "the toast of a closing panel cannot be seen")
+      tryCompare(scene.shell, "shown", false, 400)
+    }
+    function test_aHiddenStepThatSucceedsLeavesTheNextSessionAlone() {
+      startWorker()
+      compare(ipc().navigateDesktop("next"), "ok")
+      const step = requests().pop()
+      compare(step.args, ["step", "next"])
+      open()
+      answer(step, { message: "Switched", undo: { moves: [], order: [1, 2] }, order: [1, 2] })
+      compare(scene.shell.shown, true)
+      compare(status().message, "")
+      compare(scene.shell.undoRecord, null)
+      compare(notices(), [])
+    }
     function test_escapeCancelsADragOnce() {
       startWorker()
       open()

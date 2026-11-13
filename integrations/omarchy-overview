@@ -99,7 +99,10 @@ if [[ -n $direction ]]; then
     no-answer|ipc-error) fail_press "$(why)" ;;
   esac
   time_left || fail_press "Overview did not switch desktops within $limit seconds"
-  exec timeout "$left" /usr/bin/python3 "$config/controller.py" step "$direction"
+  out=$(timeout "$left" /usr/bin/python3 "$config/controller.py" step "$direction") && exit 0 || status=$?
+  ((status == 124)) && fail_press "The desktop switch did not finish within $limit seconds"
+  [[ $out =~ \"error\":\ \"([^\"\\]*) ]] && fail_press "The desktop switch failed: ${BASH_REMATCH[1]}"
+  fail_press "The desktop switch failed: controller.py exited $status"
 fi
 
 # Warm path: one IPC request, no process restart or hyprctl/jq context probes.

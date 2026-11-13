@@ -813,7 +813,9 @@ ShellRoot {
     }
     Rectangle { anchors.fill: parent; color: Qt.rgba(.043, .055, .09, preferences.values.dim / 100) }
 
-    Item {
+    // A focus scope keeps the keyboard whenever the search field cannot take it, so
+    // every key, Escape included, still reaches handleKey().
+    FocusScope {
       id: content
       anchors.fill: parent; focus: true; enabled: !root.closing
       CaptureBank {
@@ -896,9 +898,6 @@ ShellRoot {
         width: Math.min(420, parent.width - 96); height: 34
         accent: root.accent; surfaceColor: root.surfaceColor; textColor: root.textColor
         enabled: !root.busy && !input.dragging && !root.settingsShown && !root.previewAddress
-        // Disabling the focused field moves the keyboard focus out of content, so no
-        // key, Escape included, would reach handleKey() any more.
-        onEnabledChanged: if (!enabled && root.shown) content.forceActiveFocus()
         onKeyPressed: event => root.handleKey(event, true)
         onEdited: { root.previewAddress = ""; root.keyboardSelection = true }
       }
